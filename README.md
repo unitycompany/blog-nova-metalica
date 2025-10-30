@@ -1,40 +1,200 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/pages/api-reference/create-next-app).
+# 🏗️ Blog Nova Metálica
 
-## Getting Started
+Blog profissional sobre construção civil com foco em drywall, steel frame, acústica e forros.
 
-First, run the development server:
+## 🚀 Tecnologias
+
+- **Next.js 15** - Framework React
+- **TypeScript** - Tipagem estática
+- **Supabase** - Banco de dados PostgreSQL
+- **Contentlayer** - Processamento de MDX
+- **Emotion** - CSS-in-JS
+
+## 🎯 Características
+
+- ✅ **Painel Admin Completo** - Gerenciar artigos, categorias e autores
+- ✅ **Contentlayer** - Suporte a MDX para artigos ricos
+- ✅ **SEO Otimizado** - Meta tags, Open Graph, Schema.org
+- ✅ **Responsive** - Design adaptativo para todos os dispositivos
+- ✅ **Performance** - Otimizado para Core Web Vitals
+- ✅ **Supabase** - Backend escalável e seguro
+
+## 📦 Instalação
 
 ```bash
+# Instalar dependências
+npm install
+
+# Configurar variáveis de ambiente
+cp .env.local.example .env.local
+# Edite .env.local com suas credenciais do Supabase
+
+# Executar em desenvolvimento
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+
+# Build para produção
+npm run build
+
+# Executar em produção
+npm start
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 🎨 Painel Admin
 
-You can start editing the page by modifying `pages/index.tsx`. The page auto-updates as you edit the file.
+Acesse o painel administrativo em: **`http://localhost:3000/admin`**
 
-[API routes](https://nextjs.org/docs/pages/building-your-application/routing/api-routes) can be accessed on [http://localhost:3000/api/hello](http://localhost:3000/api/hello). This endpoint can be edited in `pages/api/hello.ts`.
+### Documentação do Admin:
+- 📘 [Setup Checklist](SETUP_CHECKLIST.md) - Lista de verificação passo a passo
+- 📗 [Quick Start](QUICK_START.md) - Guia rápido de início
+- 📕 [Documentação Completa](ADMIN_COMPLETE_DOCS.md) - Guia completo
+- 📙 [Comandos Úteis](ADMIN_COMMANDS.md) - SQL e comandos de terminal
 
-The `pages/api` directory is mapped to `/api/*`. Files in this directory are treated as [API routes](https://nextjs.org/docs/pages/building-your-application/routing/api-routes) instead of React pages.
+### Funcionalidades do Admin:
+- 📝 **Artigos**: Criar, editar, publicar, arquivar
+- 📁 **Categorias**: Organizar por tópicos
+- 👤 **Autores**: Gerenciar perfis e credenciais
+- 🎨 **Interface Intuitiva**: Design simples e funcional
+- 🔐 **Seguro**: Row Level Security (RLS)
 
-This project uses [`next/font`](https://nextjs.org/docs/pages/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### Autenticação do Admin
+- Crie usuários administradores diretamente no Supabase (`Authentication > Users`).
+- Use email e senha cadastrados no Supabase para acessar `/admin`.
+- Tokens de sessão ficam armazenados em cookie HTTP-only e são renovados automaticamente.
 
-## Learn More
+## 🗄️ Setup do Banco de Dados
 
-To learn more about Next.js, take a look at the following resources:
+1. Crie uma conta no [Supabase](https://supabase.com)
+2. Crie um novo projeto
+3. Execute o script SQL em **SQL Editor**:
+   ```sql
+   -- Cole o conteúdo de: scripts/db/setup_complete.sql
+   ```
+4. Configure as variáveis de ambiente no `.env.local`
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn-pages-router) - an interactive Next.js tutorial.
+## 🌐 Estrutura do Projeto
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```
+blog-nm/
+├── src/
+│   ├── pages/          # Páginas Next.js
+│   │   ├── admin/      # Painel administrativo
+│   │   ├── api/        # API Routes
+│   │   └── blog/       # Páginas de blog
+│   ├── components/     # Componentes React
+│   │   ├── admin/      # Componentes do admin
+│   │   └── ui/         # Componentes de UI
+│   ├── lib/            # Utilitários
+│   │   ├── repositories/  # Repositórios Supabase
+│   │   └── validation/    # Validações
+│   ├── content/        # Conteúdo estático
+│   └── styles/         # Estilos globais
+├── posts/              # Artigos em MDX
+├── scripts/            # Scripts SQL
+│   └── db/             # Schemas e migrations
+└── public/             # Arquivos estáticos
+```
 
-## Deploy on Vercel
+## 📝 Criar um Artigo
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### Via Admin (Recomendado):
+1. Acesse `/admin`
+2. Clique em "📝 Artigos" → "➕ Novo Artigo"
+3. Preencha os campos
+4. Clique em "Salvar"
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/pages/building-your-application/deploying) for more details.
+### Via MDX (Alternativo):
+Crie um arquivo `.mdx` em `posts/`:
+
+```mdx
+---
+title: "Como instalar drywall"
+subtitle: "Guia completo passo a passo"
+excerpt: "Aprenda a instalar drywall como um profissional"
+author: "admin"
+category: "drywall"
+date: 2025-01-15
+lang: pt-BR
+cover_asset_id: "image-id"
+site_id: "blog-nm"
+---
+
+# Introdução
+
+Conteúdo do artigo em Markdown...
+```
+
+## 🔐 Segurança
+
+O projeto usa **Row Level Security (RLS)** do Supabase:
+
+- ✅ Leitura pública de artigos publicados
+- ✅ Escrita apenas para usuários autenticados
+- ✅ Artigos em rascunho visíveis apenas no admin
+
+## 🚀 Deploy
+
+### Vercel (Recomendado)
+```bash
+npm i -g vercel
+vercel
+```
+
+### Netlify
+```bash
+npm i -g netlify-cli
+netlify deploy --prod
+```
+
+### Variáveis de Ambiente em Produção:
+```env
+NEXT_PUBLIC_SUPABASE_URL=sua-url-de-producao
+NEXT_PUBLIC_SUPABASE_ANON_KEY=sua-chave-de-producao
+```
+
+## 📊 API Routes
+
+- `GET /api/articles` - Listar artigos
+- `POST /api/articles` - Criar artigo
+- `GET /api/articles/[id]` - Buscar artigo
+- `PUT /api/articles/[id]` - Atualizar artigo
+- `DELETE /api/articles/[id]` - Deletar artigo
+
+Mesmas rotas para `/api/categories` e `/api/authors`
+
+## 🎓 Documentação
+
+- [Setup Checklist](SETUP_CHECKLIST.md) - ⚡ Início rápido
+- [Quick Start Guide](QUICK_START.md) - 📖 Guia básico
+- [Admin Complete Docs](ADMIN_COMPLETE_DOCS.md) - 📚 Documentação completa
+- [Admin Commands](ADMIN_COMMANDS.md) - 🛠️ Comandos úteis
+
+## 🤝 Contribuindo
+
+1. Fork o projeto
+2. Crie uma branch: `git checkout -b feature/nova-feature`
+3. Commit: `git commit -m 'Adicionar nova feature'`
+4. Push: `git push origin feature/nova-feature`
+5. Abra um Pull Request
+
+## 📄 Licença
+
+Este projeto é privado e propriedade da Nova Metálica.
+
+## 🆘 Suporte
+
+- 📧 Email: contato@novametalica.com.br
+- 📖 Docs: Veja os arquivos MD na raiz do projeto
+- 🐛 Issues: Abra uma issue no GitHub
+
+## ✨ Próximos Passos
+
+Depois de configurar o projeto:
+
+1. ✅ Execute o script SQL no Supabase
+2. ✅ Configure `.env.local`
+3. ✅ Execute `npm run dev`
+4. ✅ Acesse `/admin`
+5. ✅ Crie suas primeiras categorias e autores
+6. ✅ Publique seu primeiro artigo
+
+**🎉 Pronto! Seu blog está funcionando!**

@@ -1,25 +1,46 @@
 {
-  "name": "blog-nm",
+  "name": "blog-nova-metalica",
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
+    "dev": "next dev --turbopack",
+    "build": "next build --turbopack",
     "start": "next start",
     "lint": "eslint"
   },
   "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/server": "^11.11.0",
+    "@emotion/styled": "^11.14.1",
+    "@phosphor-icons/react": "^2.1.10",
+    "@supabase/supabase-js": "^2.76.0",
+    "@typescript-eslint/eslint-plugin": "^8.46.2",
+    "@typescript-eslint/parser": "^8.46.2",
+    "class-variance-authority": "^0.7.1",
+    "contentlayer": "^0.3.4",
+    "formidable": "^3.5.1",
+    "marked": "^15.0.12",
+    "next": "15.5.6",
+    "next-contentlayer": "^0.3.4",
+    "next-sitemap": "^4.2.3",
+    "polished": "^4.3.1",
+    "prettier": "^3.6.2",
     "react": "19.1.0",
     "react-dom": "19.1.0",
-    "next": "15.5.6"
+    "reading-time": "^1.5.0",
+    "swiper": "^12.0.3",
+    "turndown": "^7.1.3",
+    "turndown-plugin-gfm": "^1.0.2",
+    "yaml": "^2.6.0"
   },
   "devDependencies": {
-    "typescript": "^5",
-    "@types/node": "^20",
-    "@types/react": "^19",
+    "@emotion/types": "^0.7.0",
+    "@eslint/eslintrc": "^3",
+    "@types/node": "^20.19.22",
+    "@types/react": "^19.2.2",
     "@types/react-dom": "^19",
-    "eslint": "^9",
+    "eslint": "^9.38.0",
     "eslint-config-next": "15.5.6",
-    "@eslint/eslintrc": "^3"
+    "typescript": "^5"
   }
 }
