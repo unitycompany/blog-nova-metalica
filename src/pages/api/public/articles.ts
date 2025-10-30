@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import { categories } from '@/content/categories'
-import { getSupabaseAdmin, supabase, type Article } from '@/lib/supabase'
+import { getSupabaseAdmin, tryGetSupabaseClient, type Article, type Database } from '@/lib/supabase'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { resolveAssetUrl } from '@/util/assets'
 import type { ArticlePreview } from '@/types/article-preview'
 
@@ -65,12 +66,19 @@ export default async function handler(
   }
 
   try {
-  let client: typeof supabase
+    let client: SupabaseClient<Database>
+
     try {
       client = getSupabaseAdmin()
     } catch (error) {
       console.warn('Falling back to anon Supabase client for public articles endpoint.', error)
-      client = supabase
+      const fallbackClient = tryGetSupabaseClient()
+
+      if (!fallbackClient) {
+        throw new Error('Supabase credentials are not configured for public access.')
+      }
+
+      client = fallbackClient
     }
 
     const { data, error } = await client

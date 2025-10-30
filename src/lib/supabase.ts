@@ -4,26 +4,53 @@ import { env } from './env'
 const supabaseUrl = env.supabase.url
 const supabaseAnonKey = env.supabase.anonKey
 
-if (!supabaseUrl) {
-  throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL environment variable')
-}
-
-if (!supabaseAnonKey) {
-  throw new Error('Missing NEXT_PUBLIC_SUPABASE_ANON_KEY environment variable')
-}
-
-export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey)
-
+let publicClient: SupabaseClient<Database> | null = null
 let adminClient: SupabaseClient<Database> | null = null
+
+function assertPublicCredentials(): void {
+  if (!supabaseUrl) {
+    throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL environment variable')
+  }
+
+  if (!supabaseAnonKey) {
+    throw new Error('Missing NEXT_PUBLIC_SUPABASE_ANON_KEY environment variable')
+  }
+}
+
+function createPublicClient(): SupabaseClient<Database> {
+  assertPublicCredentials()
+  return createClient<Database>(supabaseUrl, supabaseAnonKey)
+}
+
+export function getSupabaseClient(): SupabaseClient<Database> {
+  if (!publicClient) {
+    publicClient = createPublicClient()
+  }
+
+  return publicClient
+}
+
+export function tryGetSupabaseClient(): SupabaseClient<Database> | null {
+  try {
+    return getSupabaseClient()
+  } catch (error) {
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn('Supabase client is not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.', error)
+    }
+    return null
+  }
+}
 
 export function getSupabaseAdmin(): SupabaseClient<Database> {
   if (typeof window !== 'undefined') {
-    return supabase
+    return getSupabaseClient()
   }
 
   if (adminClient) {
     return adminClient
   }
+
+  assertPublicCredentials()
 
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
