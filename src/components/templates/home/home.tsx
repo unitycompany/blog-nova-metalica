@@ -1,11 +1,16 @@
 import GridSection from "@/components/grid-section";
 import HeroSection from "@/components/hero-section";
+import type { ArticlePreview } from '@/types/article-preview';
 
-export default function HomeSection() {
+type HomeSectionProps = {
+    initialPosts?: ArticlePreview[]
+}
+
+export default function HomeSection({ initialPosts = [] }: HomeSectionProps) {
     return (
         <>
-            <HeroSection />
-            <GridSection />
+            <HeroSection initialPosts={initialPosts} />
+            <GridSection posts={initialPosts} />
         </>
     )
 }

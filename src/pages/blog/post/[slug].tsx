@@ -1,5 +1,7 @@
 import { useRouter } from "next/router"
 import { allPosts } from "contentlayer/generated";
+import type { GetStaticPaths, GetStaticProps } from 'next';
+import type { Post } from 'contentlayer/generated';
 import styled from '@emotion/styled';
 import { keyframes } from '@emotion/react';
 import ArticleSection from "@/components/article-section";
@@ -300,6 +302,10 @@ function MDXImage(props: MDXImageProps) {
 }
 /* eslint-enable @next/next/no-img-element */
 
+type PostSlugProps = {
+  slug: string
+}
+
 const sanitizeHeadingText = (value: string) =>
   value
     .replace(/`{1,3}.*?`{1,3}/g, '')
@@ -411,27 +417,76 @@ function normalizeArticleHtml(html: string) {
   return normalized;
 }
 
-export default function PostSlug() {
+function normalizeSlugParam(value: string): string {
+  if (typeof value !== 'string') {
+    return ''
+  }
+
+  return value.trim().replace(/^\/+/, '').replace(/\/+$/, '')
+}
+
+function getPostSlugCandidates(post: Post): string[] {
+  const candidates = new Set<string>()
+
+  const primarySlug = normalizeSlugParam(typeof post.slug === 'string' ? post.slug : '')
+  if (primarySlug) {
+    candidates.add(primarySlug)
+    const leaf = primarySlug.split('/').pop()
+    if (leaf) {
+      candidates.add(leaf)
+    }
+  }
+
+  const flattenedPath = normalizeSlugParam(
+    typeof post._raw?.flattenedPath === 'string' ? post._raw.flattenedPath : ''
+  )
+  if (flattenedPath) {
+    candidates.add(flattenedPath)
+    const leaf = flattenedPath.split('/').pop()
+    if (leaf) {
+      candidates.add(leaf)
+    }
+  }
+
+  return Array.from(candidates)
+}
+
+function findPostBySlug(slug: string): Post | undefined {
+  const normalizedTarget = normalizeSlugParam(slug)
+  if (!normalizedTarget) {
+    return undefined
+  }
+
+  return allPosts.find((post) => {
+    const candidates = getPostSlugCandidates(post)
+    return candidates.some((candidate) => normalizeSlugParam(candidate) === normalizedTarget)
+  })
+}
+
+function getRouteSlugFromPost(post: Post): string {
+  const candidates = getPostSlugCandidates(post)
+  const leafCandidate = candidates.find((candidate) => !candidate.includes('/'))
+  if (leafCandidate) {
+    return leafCandidate
+  }
+
+  const fallback = candidates[0] ?? ''
+  if (!fallback) {
+    return ''
+  }
+
+  const leaf = fallback.split('/').pop()
+  return leaf ?? fallback
+}
+
+export default function PostSlug({ slug }: PostSlugProps) {
     const router = useRouter()
 
-  const posts = allPosts;
   const categoriesList = categories;
 
-    // normalize slug (string | string[] | undefined) => string
-    const slug = extractSlug(router);
-
-    const normalizeSlug = (value: string) => value.replace(/^\/+/, '');
-    const postFilter = posts.find(post => {
-      if (!post?.slug) {
-        return false;
-      }
-
-      const fullSlug = normalizeSlug(String(post.slug));
-      const leafSlug = fullSlug.split('/').pop();
-      const target = normalizeSlug(slug);
-
-      return fullSlug === target || leafSlug === target;
-    });
+    const routerSlug = extractSlug(router);
+    const activeSlug = normalizeSlugParam(slug || routerSlug);
+    const postFilter = findPostBySlug(activeSlug);
 
   const categoryBreadcrumb = Array.isArray(postFilter?.breadcrumbs)
     ? postFilter?.breadcrumbs?.[1]
@@ -589,7 +644,7 @@ export default function PostSlug() {
     }
     return normalizeArticleHtml(htmlContent);
   }, [htmlContent]);
-  const isLoading = !slug || !postFilter;
+  const isLoading = !activeSlug || !postFilter;
 
   if (isLoading) {
     return (
@@ -626,4 +681,48 @@ export default function PostSlug() {
             </ContainerPost>
         </> 
     )
+}
+
+type PostPageParams = {
+  slug: string
+}
+
+export const getStaticPaths: GetStaticPaths<PostPageParams> = async () => {
+  const uniqueSlugs = Array.from(
+    new Set(
+      allPosts
+        .map((post) => getRouteSlugFromPost(post))
+        .map((slugValue) => normalizeSlugParam(slugValue))
+        .filter((slugValue) => Boolean(slugValue))
+    )
+  )
+
+  const paths = uniqueSlugs.map((slugValue) => ({
+    params: { slug: slugValue }
+  }))
+
+  return {
+    paths,
+    fallback: 'blocking'
+  }
+}
+
+export const getStaticProps: GetStaticProps<PostSlugProps, PostPageParams> = async ({ params }) => {
+  const slugParam = typeof params?.slug === 'string' ? params.slug : ''
+  const normalizedSlug = normalizeSlugParam(slugParam)
+  const matchedPost = findPostBySlug(normalizedSlug)
+
+  if (!matchedPost) {
+    return {
+      notFound: true,
+      revalidate: 60
+    }
+  }
+
+  return {
+    props: {
+      slug: normalizedSlug || getRouteSlugFromPost(matchedPost)
+    },
+    revalidate: 60
+  }
 }

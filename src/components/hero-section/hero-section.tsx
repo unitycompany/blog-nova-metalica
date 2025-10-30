@@ -5,10 +5,9 @@ import { useEffect, useMemo, useState } from 'react'
 import Search from '../search/search'
 import { media } from '../../styles/media'
 import GridSection from '../grid-section'
-import { allPosts } from 'contentlayer/generated'
 import type { ArticlePreview } from '@/types/article-preview'
-import { categories } from '@/content/categories'
 import { resolveAssetUrl } from '@/util/assets'
+import { getContentlayerArticlePreviews } from '@/lib/articles/previews'
 
 const Container = styled.section`
     width: 100%;
@@ -94,65 +93,32 @@ const Container = styled.section`
 type ApiArticlesResponse = {
     articles?: ArticlePreview[]
 }
-
-function humanizeCategory(slug: string) {
-    const match = categories.find((category) => category.slug === slug)
-    if (match?.title) {
-        return match.title
-    }
-
-    return slug
-        .replace(/[-_]+/g, ' ')
-        .trim()
-            .replace(/\b\w/g, (char) => char.toUpperCase())
-    }
-
-    function getRecordString(source: unknown, key: string): string {
-        if (!source || typeof source !== 'object' || Array.isArray(source)) {
-            return ''
-        }
-
-        const value = (source as Record<string, unknown>)[key]
-        return typeof value === 'string' ? value : ''
+type HeroSectionProps = {
+    initialPosts?: ArticlePreview[]
 }
 
-function normalizeContentlayerPosts(): ArticlePreview[] {
-    return allPosts.map((post) => {
-        const slug = typeof post.slug === 'string' ? post.slug : ''
-        const sanitizedSlug = slug.replace(/^\/+/, '')
-        const permalink = sanitizedSlug ? `/${sanitizedSlug}` : '/'
-        const categorySlug = typeof post.category === 'string' ? post.category : ''
-        const coverImageRaw =
-            (typeof post.cover_asset_id === 'string' ? post.cover_asset_id : '') ||
-            getRecordString(post, 'cover_image') ||
-            (typeof post.og_image_asset_id === 'string' ? post.og_image_asset_id : '')
-        const coverImage = resolveAssetUrl(
-            coverImageRaw,
-            '/assets/logo/logotipo-nova-metalica-branca.png'
-        )
-
-            const updatedAt = getRecordString(post, 'updated_at')
-            const postId = typeof post._id === 'string' && post._id ? post._id : permalink
-
-        return {
-                id: postId,
-            slug: sanitizedSlug.split('/').pop() ?? sanitizedSlug,
-            permalink,
-            title: post.title ?? '',
-            excerpt: post.excerpt ?? post.subtitle ?? '',
-            categorySlug,
-                categoryTitle: humanizeCategory(categorySlug),
-            authorName: typeof post.author === 'string' && post.author ? post.author : 'Equipe Nova Metálica',
-            coverImage,
-            publishedAt: (typeof post.date === 'string' && post.date ? post.date : updatedAt)
-        }
-    })
-}
-
-export default function HeroSection() {
+export default function HeroSection({ initialPosts = [] }: HeroSectionProps) {
     const [categoryActive, setCategoryActive] = useState('Todos')
     const [searchQuery, setSearchQuery] = useState('')
-    const [posts, setPosts] = useState<ArticlePreview[]>(() => normalizeContentlayerPosts())
+    const [posts, setPosts] = useState<ArticlePreview[]>(() => {
+        if (initialPosts.length > 0) {
+            return initialPosts
+        }
+        return getContentlayerArticlePreviews()
+    })
+
+    useEffect(() => {
+        if (initialPosts.length === 0) {
+            return
+        }
+
+        setPosts((current) => {
+            if (current.length > 0) {
+                return current
+            }
+            return initialPosts
+        })
+    }, [initialPosts])
 
     useEffect(() => {
         let isMounted = true
