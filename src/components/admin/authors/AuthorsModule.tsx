@@ -1,3 +1,4 @@
+import Image from 'next/image'
 import { useEffect, useMemo, useState } from 'react'
 import {
   EnvelopeSimple,
@@ -176,7 +177,13 @@ export function AuthorsModule({ onSummary, showToast }: AuthorsModuleProps) {
                 <div className="admin-author">
                   <div className="admin-author__avatar">
                     {author.avatar_url ? (
-                      <img src={author.avatar_url} alt={author.name ?? ''} />
+                      <Image
+                        src={author.avatar_url}
+                        alt={author.name ?? ''}
+                        width={40}
+                        height={40}
+                        className="admin-author__avatar-image"
+                      />
                     ) : (
                       <UserCircle size={28} weight="duotone" aria-hidden="true" />
                     )}

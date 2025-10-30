@@ -3,8 +3,6 @@ import { getSupabaseAdmin, type Article, type Database } from '../supabase'
 type ArticleRow = Database['public']['Tables']['articles']['Row']
 type ArticleInsert = Database['public']['Tables']['articles']['Insert']
 type ArticleUpdate = Database['public']['Tables']['articles']['Update']
-type ArticleInsertWithoutContent = Omit<ArticleInsert, 'content'>
-type ArticleUpdateWithoutContent = Omit<ArticleUpdate, 'content'>
 
 function isMissingContentColumn(error: { message?: string; details?: string }) {
   const message = `${error?.message ?? ''} ${error?.details ?? ''}`.toLowerCase()

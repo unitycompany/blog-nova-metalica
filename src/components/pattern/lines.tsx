@@ -33,12 +33,6 @@ const PatternLines = ({
   style = {},
   children
 }: PatternLinesProps) => {
-  // Cria o padrão SVG das linhas
-  const patternId = `lines-pattern-${Math.random().toString(36).substr(2, 9)}`;
-  
-  // Calcula o tamanho do pattern baseado no espaçamento
-  const patternSize = spacing;
-  
   const containerStyle: React.CSSProperties = {
     position: 'relative',
     width: '100%',

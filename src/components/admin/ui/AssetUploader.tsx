@@ -1,3 +1,4 @@
+import Image from 'next/image'
 import { ChangeEvent, DragEvent, KeyboardEvent, useEffect, useRef, useState } from 'react'
 import { PaperPlaneTilt, Trash, UploadSimple } from '@phosphor-icons/react'
 
@@ -138,7 +139,14 @@ export function AssetUploader({
       >
         {value ? (
           <div className="admin-uploader__preview">
-            <img src={value} alt="Pré-visualização do arquivo" />
+            <Image
+              src={value}
+              alt="Pré-visualização do arquivo"
+              width={320}
+              height={180}
+              className="admin-uploader__preview-image"
+              unoptimized
+            />
           </div>
         ) : (
           <div className="admin-uploader__placeholder">

@@ -726,9 +726,6 @@ export function ArticleForm({ articleId, onClose, showToast }: ArticleFormProps)
 	const [keyTakeawayInput, setKeyTakeawayInput] = useState('')
 	const [showSocialFields, setShowSocialFields] = useState(false)
 	const [jsonEditorState, setJsonEditorState] = useState<JsonEditorState | null>(null)
-	const [customMetadataOptionInputs, setCustomMetadataOptionInputs] = useState<
-		Partial<Record<ArticleMetadataKey, string>>
-	>({})
 	const [docImporting, setDocImporting] = useState(false)
 	const [docImportError, setDocImportError] = useState<string | null>(null)
 	const docInputRef = useRef<HTMLInputElement | null>(null)

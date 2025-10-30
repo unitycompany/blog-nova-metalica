@@ -1,3 +1,4 @@
+import Image from 'next/image'
 import type { ComponentType, ReactNode } from 'react'
 import styled from '@emotion/styled'
 import type { IconProps } from '@phosphor-icons/react'
@@ -38,12 +39,20 @@ export function AdminShell<T extends string>({
   userEmail,
   onLogout
 }: AdminShellProps<T>) {
+  const currentTab = tabs.find((tab) => tab.id === activeTab)
+
   return (
     <Shell>
       <Sidebar>
         <Brand>
           <Logo aria-hidden="true">
-            <img src="https://www.novametalica.com.br/avatar.ico" alt="" />
+            <Image
+              src="https://www.novametalica.com.br/avatar.ico"
+              alt="Logotipo Nova Metálica"
+              width={32}
+              height={32}
+              className="admin-shell__logo"
+            />
           </Logo>
           <BrandTitle>Nova Metálica</BrandTitle>
         </Brand>
@@ -89,7 +98,7 @@ export function AdminShell<T extends string>({
       </Sidebar>
 
       <Main>
-        {/* <Header>
+        <Header>
           <div>
             <Breadcrumb>Painel editorial</Breadcrumb>
             <Title>{currentTab?.label ?? 'Painel'}</Title>
@@ -112,7 +121,7 @@ export function AdminShell<T extends string>({
               </>
             )}
           </SummaryGrid>
-        </Header> */}
+        </Header>
 
         <Content>{children}</Content>
       </Main>
@@ -166,6 +175,12 @@ const Logo = styled.span`
   font-weight: 500;
   letter-spacing: 0.05em;
   border: 1px solid #00000020;
+
+  & .admin-shell__logo {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
 `
 
 const BrandTitle = styled.p`

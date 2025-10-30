@@ -4,6 +4,7 @@ import Text from '../text';
 import { rgba } from 'polished';
 import Nav from './navbar';
 import Button from '../ui/button';
+import { X } from '@phosphor-icons/react';
 
 const SidebarContent = styled.aside`
     position: fixed;
@@ -30,7 +31,7 @@ const SidebarContent = styled.aside`
         width: 100%;
         display: flex;
         align-items: center;
-        justify-content: center;
+        justify-content: space-between;
         padding: 12px 0px;
         box-shadow: ${(props) => props.theme.lines.bottom} ${(props) => props.theme.color.gray[300]};
     
@@ -38,6 +39,22 @@ const SidebarContent = styled.aside`
             font-size: ${(props) => props.theme.font.size.md};
             font-weight: ${(props) => props.theme.font.weight.regular};
             color: ${(props) => props.theme.color.gray[500]};
+        }
+
+        & .header-close {
+            background: transparent;
+            border: none;
+            padding: 4px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            color: ${(props) => props.theme.color.gray[100]};
+            cursor: pointer;
+
+            &:focus-visible {
+                outline: 2px solid ${(props) => props.theme.color.primary.light};
+                outline-offset: 2px;
+            }
         }
     }
 
@@ -99,6 +116,14 @@ export default function Sidebar({
             >
                 {instant}
             </Text>
+            <button
+                type='button'
+                className='header-close'
+                onClick={onClose}
+                aria-label='Fechar menu lateral'
+            >
+                <X size={20} weight='bold' aria-hidden='true' />
+            </button>
         </div>
         {
             instant === 'Menu' ? (
