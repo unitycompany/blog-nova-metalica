@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { useRouter } from 'next/router';
 import Header from "@/components/header";
@@ -9,6 +9,8 @@ import {media} from "@/styles/media";
 import PatternLines from "../components/pattern/lines";
 import PatternLight from "@/components/pattern/light";
 import AOS from 'aos';
+import ContactModalContext, { ContactModalData } from '@/contexts/contact-modal-context';
+import { ContactModal } from '@/components/contact/contact-modal';
 
 const LayoutStyle = styled.div<{ hasHeaderPadding?: boolean }>`
      max-width: 1440px;
@@ -142,6 +144,9 @@ export default function Layout({
     const [overlayVisible, setOverlayVisible] = useState(false);
     const hideTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const overlayVisibleRef = useRef(false);
+    const [contactModalOpen, setContactModalOpen] = useState(false);
+    const [contactPrefill, setContactPrefill] = useState<ContactModalData | undefined>(undefined);
+    const [contactContext, setContactContext] = useState<Record<string, string>>({});
 
     useEffect(() => {
         AOS.init({
@@ -150,6 +155,66 @@ export default function Layout({
             easing: 'ease-out-cubic',
             once: true
         });
+    }, []);
+
+    useEffect(() => {
+        if (typeof window === 'undefined') {
+            return;
+        }
+
+        const STORAGE_KEY = 'nm__utm_context';
+        const url = new URL(window.location.href);
+        const params = url.searchParams;
+        const captured: Record<string, string> = {};
+        params.forEach((value, key) => {
+            if (!value) {
+                return;
+            }
+
+            const normalizedKey = key.trim();
+            if (normalizedKey.startsWith('utm_') || ['gclid', 'fbclid', 'msclkid'].includes(normalizedKey)) {
+                captured[normalizedKey] = value;
+            }
+        });
+
+        try {
+            if (Object.keys(captured).length > 0) {
+                sessionStorage.setItem(STORAGE_KEY, JSON.stringify(captured));
+            }
+        } catch (storageError) {
+            if (process.env.NODE_ENV !== 'production') {
+                console.warn('Não foi possível armazenar UTMs:', storageError);
+            }
+        }
+
+        let baseContext = captured;
+
+        if (Object.keys(baseContext).length === 0) {
+            try {
+                const stored = sessionStorage.getItem(STORAGE_KEY);
+                if (stored) {
+                    baseContext = JSON.parse(stored) as Record<string, string>;
+                }
+            } catch (parseError) {
+                if (process.env.NODE_ENV !== 'production') {
+                    console.warn('Não foi possível recuperar UTMs armazenadas:', parseError);
+                }
+            }
+        }
+
+        const extras: Record<string, string> = {};
+        const landing = `${url.pathname}${url.search}`;
+        if (landing) {
+            extras.landingPage = landing;
+        }
+
+        if (document.referrer) {
+            extras.referrer = document.referrer;
+        }
+
+        extras.locale = typeof navigator !== 'undefined' ? navigator.language : 'pt-BR';
+
+        setContactContext({ ...baseContext, ...extras });
     }, []);
 
     useEffect(() => {
@@ -217,8 +282,23 @@ export default function Layout({
             router.events.off('routeChangeError', handleRouteDone);
         };
     }, [router]);
+    const openContactModal = useCallback((data?: ContactModalData) => {
+        setContactPrefill(data);
+        setContactModalOpen(true);
+    }, []);
+
+    const closeContactModal = useCallback(() => {
+        setContactModalOpen(false);
+        setContactPrefill(undefined);
+    }, []);
+
+    const contactContextValue = useMemo(() => ({
+        open: openContactModal,
+        close: closeContactModal
+    }), [openContactModal, closeContactModal]);
+
     return (
-        <>
+        <ContactModalContext.Provider value={contactContextValue}>
             <LayoutStyle hasHeaderPadding={isHome}>
                 <Bg>
                     <PatternLight 
@@ -267,6 +347,12 @@ export default function Layout({
                     </div>
                 </TransitionOverlay>
             )}
-        </>
+            <ContactModal
+                isOpen={contactModalOpen}
+                onClose={closeContactModal}
+                defaultData={contactPrefill}
+                contextData={contactContext}
+            />
+        </ContactModalContext.Provider>
     )
 }

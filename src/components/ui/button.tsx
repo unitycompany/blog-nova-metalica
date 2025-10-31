@@ -1,8 +1,11 @@
+'use client';
+
 import styled from '@emotion/styled';
 import Text from '../text';
 import Icon from './icon';
 import { ArrowUpRightIcon } from '@phosphor-icons/react/ssr';
 import { rgba } from 'polished';
+import { useContactModal } from '@/contexts/contact-modal-context';
 
 const ButtonStyled = styled.button`
     display: flex;
@@ -94,11 +97,14 @@ interface ButtonProps {
 export default function Button({
     children = "Entrar em contato",
     className,
-    onClick = () => {alert("Botão ainda não configurado")}
+    onClick
 }: ButtonProps) {
+    const { open } = useContactModal();
+    const handleClick = onClick ?? (() => open());
+
     return <ButtonStyled
         className={className}
-        onClick={onClick}
+        onClick={handleClick}
     >
         <Text
             className="text-button"
