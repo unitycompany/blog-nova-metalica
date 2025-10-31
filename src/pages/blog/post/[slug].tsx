@@ -1,4 +1,5 @@
 import { useRouter } from "next/router"
+import Head from "next/head"
 import { allPosts } from "contentlayer/generated";
 import type { GetStaticPaths, GetStaticProps } from 'next';
 import type { Post } from 'contentlayer/generated';
@@ -17,6 +18,14 @@ import type { NextRouter } from 'next/router';
 import { media } from "@/styles/media";
 import { resolveAssetUrl } from '@/util/assets';
 // ...existing code...
+
+const DEFAULT_SITE_URL = 'https://blog.novametalica.com.br';
+const DEFAULT_SITE_NAME = 'Blog Nova Metálica';
+const DEFAULT_BRAND_NAME = 'Nova Metálica';
+const DEFAULT_SITE_DESCRIPTION = 'Conteúdos sobre steel frame, construção a seco e inovação na construção civil brasileira pela Nova Metálica.';
+const DEFAULT_SOCIAL_IMAGE = '/assets/logo/logotipo-nova-metalica-branca.png';
+const DEFAULT_TWITTER_HANDLE = '@novametalica';
+const ABSOLUTE_URL_REGEX = /^https?:\/\//i;
 
 const ContainerPost = styled.article`
   width: 100%;
@@ -306,6 +315,21 @@ type PostSlugProps = {
   slug: string
 }
 
+type ImageMeta = {
+  url?: string;
+  width?: number;
+  height?: number;
+  alt?: string;
+  title?: string;
+  caption?: string;
+  type?: string;
+};
+
+type AlternateLocale = {
+  lang?: string;
+  url?: string;
+};
+
 const sanitizeHeadingText = (value: string) =>
   value
     .replace(/`{1,3}.*?`{1,3}/g, '')
@@ -331,6 +355,99 @@ const cleanString = (value?: string | null) => {
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : '';
 };
+
+function ensureAbsoluteUrl(value?: string | null, fallbackPath?: string) {
+  const base = DEFAULT_SITE_URL;
+  const candidate = cleanString(value);
+
+  if (candidate) {
+    if (ABSOLUTE_URL_REGEX.test(candidate)) {
+      return candidate;
+    }
+
+    if (candidate.startsWith('//')) {
+      return `https:${candidate}`;
+    }
+
+    const normalized = candidate.startsWith('/')
+      ? candidate
+      : `/${candidate.replace(/^\/+/g, '')}`;
+
+    return `${base}${normalized}`;
+  }
+
+  if (fallbackPath) {
+    if (ABSOLUTE_URL_REGEX.test(fallbackPath)) {
+      return fallbackPath;
+    }
+
+    if (fallbackPath.startsWith('//')) {
+      return `https:${fallbackPath}`;
+    }
+
+    const normalizedFallback = fallbackPath.startsWith('/')
+      ? fallbackPath
+      : `/${fallbackPath.replace(/^\/+/g, '')}`;
+
+    return `${base}${normalizedFallback}`;
+  }
+
+  return base;
+}
+
+function toOgLocale(locale: string) {
+  return locale.replace('-', '_');
+}
+
+function toIsoString(value?: string | Date | null) {
+  if (!value) {
+    return '';
+  }
+
+  const parsed = typeof value === 'string' ? new Date(value) : value;
+  if (Number.isNaN(parsed.getTime())) {
+    return '';
+  }
+
+  return parsed.toISOString();
+}
+
+function buildRobotsContent(indexDirective?: string, followDirective?: string, advancedDirectives?: string) {
+  const directives = new Set<string>();
+
+  const append = (directive?: string) => {
+    const cleaned = cleanString(directive);
+    if (!cleaned) {
+      return;
+    }
+
+    cleaned
+      .split(',')
+      .map((token) => cleanString(token))
+      .filter(Boolean)
+      .forEach((token) => directives.add(String(token).toLowerCase()));
+  };
+
+  append(indexDirective);
+  append(followDirective);
+  append(advancedDirectives);
+
+  if (directives.size === 0) {
+    directives.add('index');
+    directives.add('follow');
+  }
+
+  return Array.from(directives).join(', ');
+}
+
+function normalizeTwitterHandle(value?: string | null) {
+  const handle = cleanString(value);
+  if (!handle) {
+    return '';
+  }
+
+  return handle.startsWith('@') ? handle : `@${handle}`;
+}
 
 const humanizeSlug = (value: string) => {
   const normalized = value.replace(/[-_/]+/g, ' ').trim();
@@ -514,6 +631,229 @@ export default function PostSlug({ slug }: PostSlugProps) {
   const authorAvatarRaw = cleanString(postFilter?.author_avatar_asset_id) || cleanString(matchedAuthor?.avatar_url);
   const authorAvatar = authorAvatarRaw ? normalizeAssetUrl(authorAvatarRaw) : '';
 
+  const imageMeta = (postFilter?.image_meta as ImageMeta | undefined) ?? undefined;
+  const routeSlugFromPost = postFilter ? getRouteSlugFromPost(postFilter) : '';
+  const permalink = cleanString(postFilter?.permalink);
+  const normalizedPermalink = permalink ? `/${normalizeSlugParam(permalink)}` : '';
+  const canonicalFallbackPath = normalizedPermalink || (routeSlugFromPost ? `/blog/post/${normalizeSlugParam(routeSlugFromPost)}` : '/blog');
+  const canonicalUrl = ensureAbsoluteUrl(postFilter?.canonical_url, canonicalFallbackPath);
+  const pageUrl = canonicalUrl;
+  const lang = cleanString(postFilter?.lang) || 'pt-BR';
+  const normalizedLang = lang.replace('_', '-');
+  const ogLocale = toOgLocale(normalizedLang);
+  const seoTitle = cleanString(postFilter?.seo_title) || cleanString(postFilter?.og_title) || cleanString(postFilter?.title) || DEFAULT_SITE_NAME;
+  const metaTitle = seoTitle;
+  const seoDescription = cleanString(postFilter?.seo_description)
+    || cleanString(postFilter?.og_description)
+    || cleanString(postFilter?.excerpt)
+    || DEFAULT_SITE_DESCRIPTION;
+  const ogTitle = cleanString(postFilter?.og_title) || metaTitle;
+  const ogDescription = cleanString(postFilter?.og_description) || seoDescription;
+  const ogType = cleanString(postFilter?.og_type) || 'article';
+  const twitterCard = cleanString(postFilter?.twitter_card) || 'summary_large_image';
+  const twitterSite = normalizeTwitterHandle(postFilter?.twitter_site) || DEFAULT_TWITTER_HANDLE;
+  const twitterCreator = normalizeTwitterHandle(postFilter?.twitter_creator) || twitterSite || DEFAULT_TWITTER_HANDLE;
+  const ogImageCandidate = cleanString(imageMeta?.url)
+    || cleanString(postFilter?.og_image)
+    || cleanString(postFilter?.og_image_asset_id)
+    || cleanString(postFilter?.cover_image)
+    || cleanString(postFilter?.cover_asset_id)
+    || DEFAULT_SOCIAL_IMAGE;
+  const normalizedOgImage = ogImageCandidate ? normalizeAssetUrl(ogImageCandidate) : DEFAULT_SOCIAL_IMAGE;
+  const ogImageUrl = ensureAbsoluteUrl(normalizedOgImage, DEFAULT_SOCIAL_IMAGE);
+  const ogImageWidth = typeof imageMeta?.width === 'number' ? String(imageMeta.width) : undefined;
+  const ogImageHeight = typeof imageMeta?.height === 'number' ? String(imageMeta.height) : undefined;
+  const ogImageAlt = cleanString(imageMeta?.alt)
+    || cleanString(imageMeta?.title)
+    || cleanString(imageMeta?.caption)
+    || cleanString(postFilter?.title)
+    || 'Imagem de destaque do Blog Nova Metálica';
+  const ogImageType = cleanString(imageMeta?.type);
+  const robotsContent = buildRobotsContent(postFilter?.robots_index, postFilter?.robots_follow, postFilter?.robots_advanced);
+  const googlebotContent = robotsContent;
+  const bingbotContent = robotsContent;
+  const publishedTimeIso = toIsoString(postFilter?.published_at || postFilter?.date);
+  const modifiedTimeIso = toIsoString(postFilter?.lastmod || postFilter?.updated_at || postFilter?.date);
+  const createdTimeIso = toIsoString(postFilter?.date);
+  const articleSection = cleanString(postFilter?.article_section) || categoryTitle;
+
+  const tagCollections: string[][] = [
+    Array.isArray(postFilter?.article_tags) ? (postFilter?.article_tags as string[]) : [],
+    Array.isArray(postFilter?.tags) ? (postFilter?.tags as string[]) : [],
+    Array.isArray(postFilter?.topics) ? (postFilter?.topics as string[]) : [],
+    Array.isArray(postFilter?.tag_ids) ? (postFilter?.tag_ids as string[]) : [],
+  ];
+
+  const keywordSet = new Set<string>();
+  tagCollections.forEach((collection) => {
+    collection.forEach((item) => {
+      const value = cleanString(item);
+      if (value) {
+        keywordSet.add(value);
+      }
+    });
+  });
+
+  if (categoryTitle) {
+    keywordSet.add(categoryTitle);
+  }
+
+  const keywords = Array.from(keywordSet);
+  const keywordsContent = keywords.join(', ');
+
+  const alternateLocalesRaw = Array.isArray(postFilter?.alternate_locales)
+    ? (postFilter?.alternate_locales as AlternateLocale[])
+    : [];
+
+  const alternateLocales = alternateLocalesRaw
+    .map((entry) => ({
+      lang: cleanString(entry?.lang),
+      url: cleanString(entry?.url),
+    }))
+    .filter((entry): entry is { lang: string; url: string } => Boolean(entry.lang && entry.url));
+
+  const alternateLocaleLinks = alternateLocales.map((entry) => ({
+    lang: entry.lang,
+    url: ensureAbsoluteUrl(entry.url, entry.url),
+  }));
+
+  const ogLocaleAlternates = alternateLocaleLinks.map((entry) => toOgLocale(entry.lang.replace('_', '-')));
+
+  const authorUrl = cleanString(postFilter?.author_url) ? ensureAbsoluteUrl(postFilter?.author_url) : '';
+  const reviewerName = cleanString(postFilter?.reviewed_by);
+  const reviewerCredentials = cleanString(postFilter?.reviewer_credentials);
+  const fundingDisclosure = cleanString(postFilter?.funding_disclosure);
+  const conflictsOfInterest = cleanString(postFilter?.conflicts_of_interest);
+  const mainEntity = cleanString(postFilter?.main_entity_of_page)
+    ? ensureAbsoluteUrl(postFilter?.main_entity_of_page)
+    : canonicalUrl;
+  const isAccessibleForFree = typeof postFilter?.is_accessible_for_free === 'boolean'
+    ? postFilter?.is_accessible_for_free
+    : true;
+
+  const readingTimeMinutes = typeof postFilter?.reading_time_minutes === 'number'
+    ? Math.round(Math.max(postFilter.reading_time_minutes, 1))
+    : typeof postFilter?.readingTime?.minutes === 'number'
+      ? Math.round(Math.max(postFilter.readingTime.minutes, 1))
+      : undefined;
+  const timeRequired = readingTimeMinutes ? `PT${readingTimeMinutes}M` : undefined;
+
+  const faqEntries = Array.isArray(postFilter?.faq)
+    ? (postFilter?.faq as Array<{ question?: string; answer?: string }>)
+        .map((entry) => ({
+          question: cleanString(entry?.question),
+          answer: cleanString(entry?.answer),
+        }))
+        .filter((entry) => entry.question && entry.answer)
+    : [];
+
+  const citations = Array.isArray(postFilter?.citations)
+    ? (postFilter?.citations as Array<{ title?: string; url?: string }>)
+        .map((entry) => cleanString(entry?.url) || cleanString(entry?.title))
+        .filter(Boolean)
+    : [];
+
+  const relatedPostUrls = Array.isArray(postFilter?.related_post_slugs)
+    ? (postFilter?.related_post_slugs as string[])
+        .map((value) => cleanString(value))
+        .filter(Boolean)
+        .map((value) => {
+          if (!value) {
+            return '';
+          }
+
+          if (ABSOLUTE_URL_REGEX.test(value) || value.startsWith('//')) {
+            return ensureAbsoluteUrl(value);
+          }
+
+          const normalizedValue = value.startsWith('/')
+            ? value
+            : `/blog/post/${normalizeSlugParam(value)}`;
+          return ensureAbsoluteUrl(normalizedValue, normalizedValue);
+        })
+        .filter(Boolean)
+    : [];
+
+  const structuredData: Array<Record<string, unknown>> = [];
+  const articleSchema: Record<string, unknown> = {
+    '@context': 'https://schema.org',
+    '@type': 'Article',
+    headline: metaTitle,
+    description: seoDescription,
+    mainEntityOfPage: mainEntity,
+    inLanguage: cleanString(postFilter?.in_language) || normalizedLang,
+    isAccessibleForFree,
+    keywords: keywords.length ? keywords.join(', ') : undefined,
+    articleSection: articleSection || undefined,
+    datePublished: publishedTimeIso || undefined,
+    dateModified: modifiedTimeIso || publishedTimeIso || undefined,
+    dateCreated: createdTimeIso || undefined,
+    author: authorName
+      ? {
+          '@type': 'Person',
+          name: authorName,
+          ...(authorUrl ? { url: authorUrl } : {}),
+          ...(authorAvatar ? { image: ensureAbsoluteUrl(authorAvatar, authorAvatar) } : {}),
+          ...(authorCredentials ? { jobTitle: authorCredentials } : {}),
+        }
+      : undefined,
+    publisher: {
+      '@type': 'Organization',
+      name: DEFAULT_BRAND_NAME,
+      url: DEFAULT_SITE_URL,
+      logo: {
+        '@type': 'ImageObject',
+        url: ensureAbsoluteUrl(DEFAULT_SOCIAL_IMAGE, DEFAULT_SOCIAL_IMAGE),
+      },
+    },
+    image: ogImageUrl
+      ? [{
+          '@type': 'ImageObject',
+          url: ogImageUrl,
+          ...(ogImageWidth ? { width: Number(ogImageWidth) } : {}),
+          ...(ogImageHeight ? { height: Number(ogImageHeight) } : {}),
+          ...(ogImageAlt ? { caption: ogImageAlt } : {}),
+          ...(ogImageType ? { encodingFormat: ogImageType } : {}),
+        }]
+      : undefined,
+    ...(reviewerName
+      ? {
+          reviewedBy: {
+            '@type': 'Person',
+            name: reviewerName,
+            ...(reviewerCredentials ? { jobTitle: reviewerCredentials } : {}),
+          },
+        }
+      : {}),
+    ...(fundingDisclosure ? { funding: fundingDisclosure } : {}),
+    ...(conflictsOfInterest ? { conflictsOfInterest } : {}),
+    ...(timeRequired ? { timeRequired } : {}),
+    ...(postFilter?.word_count ? { wordCount: postFilter.word_count } : {}),
+    ...(postFilter?.tldr ? { abstract: postFilter.tldr } : {}),
+    ...(citations.length ? { citation: citations } : {}),
+  };
+
+  if (alternateLocaleLinks.length > 0) {
+    articleSchema.alternateName = alternateLocaleLinks.map((entry) => entry.lang);
+  }
+
+  structuredData.push(articleSchema);
+
+  if (faqEntries.length > 0) {
+    structuredData.push({
+      '@context': 'https://schema.org',
+      '@type': 'FAQPage',
+      mainEntity: faqEntries.map((entry) => ({
+        '@type': 'Question',
+        name: entry.question,
+        acceptedAnswer: {
+          '@type': 'Answer',
+          text: entry.answer,
+        },
+      })),
+    });
+  }
+
   const rawBody = postFilter?.body?.raw ?? '';
   const isHtmlBody = Boolean(rawBody) && /<\s*(p|div|span|table|thead|tbody|tr|td|th|ul|ol|li|img|h[1-6]|blockquote|strong|em|figure|figcaption|pre|code|br|hr|section|article)\b/i.test(rawBody.trim());
   const contentRef = React.useRef<HTMLDivElement | null>(null);
@@ -657,30 +997,93 @@ export default function PostSlug({ slug }: PostSlugProps) {
     );
   }
 
-    return (
-        <>
-            <ContainerPost>
-        <ArticleSection 
-                    title={postFilter?.title ?? 'Artigo'}
-                    date={postFilter?.date}
-                    category={categoryTitle}
-                    excerpt={postFilter?.excerpt}
+  return (
+    <>
+      <Head>
+        <title>{metaTitle}</title>
+        <meta key="description" name="description" content={seoDescription} />
+        {keywordsContent ? <meta key="keywords" name="keywords" content={keywordsContent} /> : null}
+        <meta key="language" name="language" content={normalizedLang} />
+        <meta key="author" name="author" content={authorName} />
+        <meta key="publisher" name="publisher" content={DEFAULT_BRAND_NAME} />
+        <meta key="robots" name="robots" content={robotsContent} />
+        <meta key="googlebot" name="googlebot" content={googlebotContent} />
+        <meta key="bingbot" name="bingbot" content={bingbotContent} />
+        <meta key="article:author" property="article:author" content={authorUrl || authorName} />
+        {articleSection ? <meta key="category" name="category" content={articleSection} /> : null}
+        {publishedTimeIso ? <meta key="citation_publication_date" name="citation_publication_date" content={publishedTimeIso} /> : null}
+        <meta key="og:title" property="og:title" content={ogTitle} />
+        <meta key="og:description" property="og:description" content={ogDescription} />
+        <meta key="og:type" property="og:type" content={ogType} />
+        <meta key="og:url" property="og:url" content={pageUrl} />
+        <meta key="og:site_name" property="og:site_name" content={DEFAULT_SITE_NAME} />
+        <meta key="og:locale" property="og:locale" content={ogLocale} />
+        {ogLocaleAlternates.map((locale) => (
+          <meta key={`og:locale:alternate:${locale}`} property="og:locale:alternate" content={locale} />
+        ))}
+        <meta key="og:image" property="og:image" content={ogImageUrl} />
+        <meta key="og:image:secure_url" property="og:image:secure_url" content={ogImageUrl} />
+        {ogImageAlt ? <meta key="og:image:alt" property="og:image:alt" content={ogImageAlt} /> : null}
+        {ogImageWidth ? <meta key="og:image:width" property="og:image:width" content={ogImageWidth} /> : null}
+        {ogImageHeight ? <meta key="og:image:height" property="og:image:height" content={ogImageHeight} /> : null}
+        {ogImageType ? <meta key="og:image:type" property="og:image:type" content={ogImageType} /> : null}
+        {publishedTimeIso ? <meta key="article:published_time" property="article:published_time" content={publishedTimeIso} /> : null}
+        {modifiedTimeIso ? <meta key="article:modified_time" property="article:modified_time" content={modifiedTimeIso} /> : null}
+        {modifiedTimeIso ? <meta key="og:updated_time" property="og:updated_time" content={modifiedTimeIso} /> : null}
+        {createdTimeIso ? <meta key="article:created_time" property="article:created_time" content={createdTimeIso} /> : null}
+        {articleSection ? <meta key="article:section" property="article:section" content={articleSection} /> : null}
+        {keywords.map((tag) => (
+          <meta key={`article:tag:${tag}`} property="article:tag" content={tag} />
+        ))}
+        {relatedPostUrls.map((url) => (
+          <meta key={`og:see_also:${url}`} property="og:see_also" content={url} />
+        ))}
+        <meta key="twitter:card" name="twitter:card" content={twitterCard} />
+        <meta key="twitter:title" name="twitter:title" content={ogTitle} />
+        <meta key="twitter:description" name="twitter:description" content={ogDescription} />
+        <meta key="twitter:image" name="twitter:image" content={ogImageUrl} />
+        {ogImageAlt ? <meta key="twitter:image:alt" name="twitter:image:alt" content={ogImageAlt} /> : null}
+        <meta key="twitter:url" name="twitter:url" content={pageUrl} />
+        {twitterSite ? <meta key="twitter:site" name="twitter:site" content={twitterSite} /> : null}
+        {twitterCreator ? <meta key="twitter:creator" name="twitter:creator" content={twitterCreator} /> : null}
+        {timeRequired ? <meta key="reading-time" name="estimated-reading-time" content={timeRequired} /> : null}
+        <link key="canonical" rel="canonical" href={pageUrl} />
+        <link key={`alternate-${normalizedLang}`} rel="alternate" hrefLang={normalizedLang} href={pageUrl} />
+        <link key="alternate-x-default" rel="alternate" hrefLang="x-default" href={pageUrl} />
+        {alternateLocaleLinks.map((entry) => (
+          <link key={`alternate-${entry.lang}`} rel="alternate" hrefLang={entry.lang} href={entry.url} />
+        ))}
+        {authorUrl ? <link key="author-profile" rel="author" href={authorUrl} /> : null}
+        {structuredData.map((schema, index) => (
+          <script
+            key={`ldjson-${index}`}
+            type="application/ld+json"
+            dangerouslySetInnerHTML={{ __html: JSON.stringify(schema) }}
+          />
+        ))}
+      </Head>
+      <ContainerPost>
+        <ArticleSection
+          title={postFilter?.title ?? 'Artigo'}
+          date={postFilter?.date}
+          category={categoryTitle}
+          excerpt={postFilter?.excerpt}
           author={authorName}
           author_profission={authorCredentials || undefined}
           authorImage={authorAvatar || undefined}
-      topic={headings}
-                >
-      <MDXContainer ref={contentRef}>
-                      {normalizedHtmlContent ? (
-                        <div dangerouslySetInnerHTML={{ __html: normalizedHtmlContent }} />
-                      ) : (
-                        <MDXContent components={mdxComponents} />
-                      )}
-                    </MDXContainer>
-                </ArticleSection>
-            </ContainerPost>
-        </> 
-    )
+          topic={headings}
+        >
+          <MDXContainer ref={contentRef}>
+            {normalizedHtmlContent ? (
+              <div dangerouslySetInnerHTML={{ __html: normalizedHtmlContent }} />
+            ) : (
+              <MDXContent components={mdxComponents} />
+            )}
+          </MDXContainer>
+        </ArticleSection>
+      </ContainerPost>
+    </>
+  );
 }
 
 type PostPageParams = {

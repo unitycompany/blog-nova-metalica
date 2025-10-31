@@ -1,0 +1,17 @@
+{
+  "name": "Blog Nova Metálica",
+  "short_name": "Nova Metálica",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#03060F",
+  "theme_color": "#179CD7",
+  "description": "Conteúdo especializado da Nova Metálica sobre steel frame, construção a seco e inovação na construção civil.",
+  "lang": "pt-BR",
+  "icons": [
+    {
+      "src": "/novametalica.ico",
+      "sizes": "48x48",
+      "type": "image/x-icon"
+    }
+  ]
+}
