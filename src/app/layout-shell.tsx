@@ -22,8 +22,8 @@ const LayoutStyle = styled.div<{ hasHeaderPadding?: boolean }>`
     flex-direction: column;
     height: auto;
     padding-top: ${(props) => (props.hasHeaderPadding ? 'calc(70px + 18px)' : '18px')};
-    box-shadow: inset ${(props) => props.theme?.lines?.left ?? '0 0 0 0'} ${(props) => props.theme?.color?.gray?.[500] ?? 'transparent'},
-                inset ${(props) => props.theme?.lines?.right ?? '0 0 0 0'} ${(props) => props.theme?.color?.gray?.[500] ?? 'transparent'};
+    box-shadow: inset ${(props) => props.theme?.lines?.left ?? '0 0 0 0'} ${(props) => props.theme?.color?.black?.[300] ?? 'transparent'},
+                inset ${(props) => props.theme?.lines?.right ?? '0 0 0 0'} ${(props) => props.theme?.color?.black?.[300] ?? 'transparent'};
 
     ${media('mobile')} {
         box-shadow: none;

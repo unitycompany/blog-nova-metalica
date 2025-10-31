@@ -1,4 +1,6 @@
 import styled from '@emotion/styled';
+import { useEffect } from 'react';
+import { useRouter } from 'next/router';
 import Icon from '../ui/icon';
 import { ArrowLeftIcon } from '@phosphor-icons/react/dist/ssr';
 import Text from '../text';
@@ -136,6 +138,23 @@ export default function ArticleHeader ({
     title = 'Título do artigo',
     excerpt = 'Este é um resumo do artigo que fornece uma visão geral do conteúdo abordado no post.',
 }: ArticleHeaderProps) {
+    const router = useRouter();
+
+    useEffect(() => {
+        if (typeof router?.prefetch === 'function') {
+            router.prefetch('/');
+        }
+    }, [router]);
+
+    const handleBackToHome = () => {
+        if (router && typeof router.push === 'function') {
+            void router.push('/');
+            return;
+        }
+
+        window.location.href = '/';
+    };
+
     return (
         <>
             <Container>
@@ -145,7 +164,7 @@ export default function ArticleHeader ({
                         Icon={ArrowLeftIcon}
                         size={16}
                         color="#fff"
-                        onClick={() => window.location.href = ('/')}
+                        onClick={handleBackToHome}
                     />
                     <div className='div-infos'>
                         <Text

@@ -1,13 +1,15 @@
 import styled from '@emotion/styled'
 import Text from '../text'
 import Category from '../category/category'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Search from '../search/search'
 import { media } from '../../styles/media'
 import GridSection from '../grid-section'
 import type { ArticlePreview } from '@/types/article-preview'
 import { resolveAssetUrl } from '@/util/assets'
-import { getContentlayerArticlePreviews } from '@/lib/articles/previews'
+import { dedupeArticlePreviews, getContentlayerArticlePreviews } from '@/lib/articles/previews'
+import { tryGetSupabaseClient } from '@/lib/supabase'
+import type { RealtimeChannel } from '@supabase/supabase-js'
 
 const Container = styled.section`
     width: 100%;
@@ -101,10 +103,8 @@ export default function HeroSection({ initialPosts = [] }: HeroSectionProps) {
     const [categoryActive, setCategoryActive] = useState('Todos')
     const [searchQuery, setSearchQuery] = useState('')
     const [posts, setPosts] = useState<ArticlePreview[]>(() => {
-        if (initialPosts.length > 0) {
-            return initialPosts
-        }
-        return getContentlayerArticlePreviews()
+        const resolved = initialPosts.length > 0 ? initialPosts : getContentlayerArticlePreviews()
+        return dedupeArticlePreviews(resolved)
     })
 
     useEffect(() => {
@@ -112,58 +112,76 @@ export default function HeroSection({ initialPosts = [] }: HeroSectionProps) {
             return
         }
 
-        setPosts((current) => {
-            if (current.length > 0) {
-                return current
-            }
-            return initialPosts
-        })
+        setPosts(dedupeArticlePreviews(initialPosts))
     }, [initialPosts])
 
-    useEffect(() => {
-        let isMounted = true
-        const controller = new AbortController()
+    const fetchArticles = useCallback(async (signal?: AbortSignal) => {
+        try {
+            const response = await fetch('/api/public/articles', {
+                signal
+            })
 
-        async function fetchArticles() {
-            try {
-                const response = await fetch('/api/public/articles', {
-                    signal: controller.signal
-                })
-
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}`)
-                }
-
-                const payload = (await response.json()) as ApiArticlesResponse
-                const items = Array.isArray(payload.articles) ? payload.articles : []
-                const normalizedItems = items.map((item) => ({
-                    ...item,
-                    coverImage: resolveAssetUrl(
-                        item.coverImage,
-                        '/assets/logo/logotipo-nova-metalica-branca.png'
-                    )
-                }))
-
-                        if (!isMounted) {
-                    return
-                }
-
-                setPosts(normalizedItems)
-            } catch (error) {
-                if ((error as Error)?.name === 'AbortError') {
-                    return
-                }
-                console.error('Falha ao carregar artigos publicados:', error)
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`)
             }
-        }
 
-        void fetchArticles()
+            const payload = (await response.json()) as ApiArticlesResponse
+            const items = Array.isArray(payload.articles) ? payload.articles : []
+            const normalizedItems = items.map((item) => ({
+                ...item,
+                coverImage: resolveAssetUrl(
+                    item.coverImage,
+                    '/assets/logo/logotipo-nova-metalica-branca.png'
+                )
+            }))
 
-        return () => {
-            isMounted = false
-            controller.abort()
+            setPosts(dedupeArticlePreviews(normalizedItems))
+        } catch (error) {
+            if ((error as Error)?.name === 'AbortError') {
+                return
+            }
+            console.error('Falha ao carregar artigos publicados:', error)
         }
     }, [])
+
+    useEffect(() => {
+        const controller = new AbortController()
+        void fetchArticles(controller.signal)
+        return () => {
+            controller.abort()
+        }
+    }, [fetchArticles])
+
+    useEffect(() => {
+        const client = tryGetSupabaseClient()
+
+        if (!client) {
+            return undefined
+        }
+
+        let channel: RealtimeChannel | null = null
+
+        try {
+            channel = client
+                .channel('public:articles:realtime')
+                .on(
+                    'postgres_changes',
+                    { event: '*', schema: 'public', table: 'articles' },
+                    () => {
+                        void fetchArticles()
+                    }
+                )
+                .subscribe()
+        } catch (error) {
+            console.error('Falha ao iniciar assinatura em tempo real do Supabase:', error)
+        }
+
+        return () => {
+            if (channel) {
+                void client.removeChannel(channel)
+            }
+        }
+    }, [fetchArticles])
 
     const postsByCategory = useMemo(() => {
         if (categoryActive === 'Todos') {
@@ -190,8 +208,8 @@ export default function HeroSection({ initialPosts = [] }: HeroSectionProps) {
     }, [postsByCategory, searchQuery])
 
     return (
-        <Container>
-            <div className='titles-sec'>
+        <Container data-aos='fade-up'>
+            <div className='titles-sec' data-aos='fade-up' data-aos-delay='80'>
                 <Text as='h1' className='title'>
                     Explore nossos artigos
                 </Text>
@@ -199,7 +217,7 @@ export default function HeroSection({ initialPosts = [] }: HeroSectionProps) {
                     Todos os artigos são revisados e garantidos que estão passsando a informação de forma correta
                 </Text>
             </div>
-            <div className='navigation-sec'>
+            <div className='navigation-sec' id='categorias' data-aos='fade-up' data-aos-delay='140'>
                 <Category categoryActive={categoryActive} setCategoryActive={setCategoryActive} posts={posts} />
                 <Search onSearch={setSearchQuery} />
             </div>

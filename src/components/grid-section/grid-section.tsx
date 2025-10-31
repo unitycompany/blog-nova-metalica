@@ -1,10 +1,12 @@
 import styled from '@emotion/styled'
+import { useEffect } from 'react'
 import Card from '../ui/card'
 import { categories } from '@/content/categories'
 import { media } from '@/styles/media'
 import { useRouter } from 'next/router'
 import type { ArticlePreview } from '@/types/article-preview'
 import { resolveAssetUrl } from '@/util/assets'
+import AOS from 'aos'
 
 const Container = styled.section`
     width: 100%;
@@ -34,6 +36,10 @@ interface GridSectionProps {
 export default function GridSection({ posts = [] }: GridSectionProps) {
     const router = useRouter()
 
+    useEffect(() => {
+        AOS.refresh()
+    }, [posts.length])
+
     const resolveCategoryTitle = (slug: string, fallback: string) => {
         if (fallback) {
             return fallback
@@ -47,8 +53,8 @@ export default function GridSection({ posts = [] }: GridSectionProps) {
         resolveAssetUrl(cover, '/assets/logo/logotipo-nova-metalica-branca.png')
 
     return (
-        <Container>
-            {posts.map((post) => {
+        <Container data-aos='fade-up' data-aos-delay='200'>
+            {posts.map((post, index) => {
                 const targetPath = post.permalink.startsWith('/') ? post.permalink : `/${post.permalink}`
                 return (
                     <Card
@@ -63,6 +69,8 @@ export default function GridSection({ posts = [] }: GridSectionProps) {
                         category={resolveCategoryTitle(post.categorySlug, post.categoryTitle)}
                         author={post.authorName || 'Equipe Nova Metálica'}
                         date={post.publishedAt || ''}
+                        dataAos='fade-up'
+                        dataAosDelay={Math.min(index, 5) * 100}
                     />
                 )
             })}

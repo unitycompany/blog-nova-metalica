@@ -10,31 +10,28 @@ import { useIsMobile } from '@/hooks/useIsMobile';
 
 const FloatingWrapper = styled.div`
     position: fixed;
-    bottom: 24px;
-    right: 24px;
+    bottom: clamp(18px, 4vw, 28px);
+    right: clamp(18px, 4vw, 28px);
     z-index: 40;
     display: flex;
     align-items: center;
     justify-content: center;
-
-    @media (pointer: coarse) {
-        bottom: 18px;
-        right: 18px;
-    }
 `;
 
 const FloatingButton = styled.button<{ $open: boolean }>`
     width: 56px;
     height: 56px;
     border-radius: 50%;
-    border: none;
+    border: 1px solid rgba(255, 255, 255, 0.32);
     display: flex;
     align-items: center;
     justify-content: center;
-    background-color: #ffffff;
-    box-shadow: 0 12px 32px rgba(12, 12, 12, 0.28);
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.82), rgba(245, 245, 245, 0.72));
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    box-shadow: 0 18px 42px rgba(12, 12, 12, 0.28);
     cursor: pointer;
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    transition: transform 0.24s ease, box-shadow 0.24s ease, background 0.24s ease;
 
     &:focus-visible {
         outline: 3px solid rgba(23, 156, 215, 0.45);
@@ -42,19 +39,21 @@ const FloatingButton = styled.button<{ $open: boolean }>`
     }
 
     &:hover {
-        transform: scale(1.02);
-        box-shadow: 0 16px 36px rgba(12, 12, 12, 0.36);
+        transform: translateY(-2px);
+        box-shadow: 0 24px 48px rgba(12, 12, 12, 0.32);
+        background: linear-gradient(145deg, rgba(255, 255, 255, 0.9), rgba(250, 250, 250, 0.8));
     }
 
     ${(props) => props.$open && `
         transform: scale(0.96);
+        background: linear-gradient(145deg, rgba(255, 255, 255, 0.78), rgba(238, 238, 238, 0.68));
     `}
 `;
 
 const Overlay = styled.div<{ $open: boolean }>`
     position: fixed;
     inset: 0;
-    background: rgba(12, 12, 12, 0.45);
+    background: rgba(12, 12, 12, 0.42);
     opacity: ${(props) => (props.$open ? 1 : 0)};
     pointer-events: ${(props) => (props.$open ? 'auto' : 'none')};
     transition: opacity 0.24s ease;
@@ -66,11 +65,14 @@ const Sheet = styled.aside<{ $open: boolean }>`
     left: 50%;
     bottom: 0;
     transform: translate(-50%, ${(props) => (props.$open ? '0%' : '120%')});
-    transition: transform 0.3s ease;
-    width: min(540px, 100% - 32px);
-    background: ${(props) => props.theme.color.black[0]};
-    border-radius: 20px 20px 0 0;
-    box-shadow: 0 -24px 48px rgba(0, 0, 0, 0.45);
+    transition: transform 0.34s cubic-bezier(0.33, 1, 0.68, 1);
+    width: min(560px, calc(100% - 24px));
+    background: linear-gradient(160deg, rgba(18, 18, 19, 0.92), rgba(10, 10, 11, 0.88));
+    backdrop-filter: blur(26px);
+    -webkit-backdrop-filter: blur(26px);
+    border-radius: 26px 26px 0 0;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    box-shadow: 0 -28px 72px rgba(0, 0, 0, 0.52);
     z-index: 40;
     display: flex;
     flex-direction: column;
@@ -78,8 +80,8 @@ const Sheet = styled.aside<{ $open: boolean }>`
     pointer-events: ${(props) => (props.$open ? 'auto' : 'none')};
 
     @media (max-width: 640px) {
-        width: 100%;
-        border-radius: 24px 24px 0 0;
+        width: calc(100% - 12px);
+        border-radius: 28px 28px 0 0;
     }
 `;
 
@@ -87,32 +89,33 @@ const SheetHandle = styled.span`
     width: 48px;
     height: 5px;
     border-radius: 999px;
-    background: rgba(255, 255, 255, 0.32);
-    margin: 12px auto 16px auto;
+    background: rgba(255, 255, 255, 0.36);
+    margin: 12px auto 20px auto;
     display: block;
 `;
 
 const SheetBody = styled.div`
     display: flex;
     flex-direction: column;
-    gap: 20px;
-    padding: 12px 24px 28px 24px;
-    max-height: min(70vh, 420px);
+    gap: 24px;
+    padding: 14px 28px 32px 28px;
+    max-height: min(70vh, 440px);
     overflow-y: auto;
 
     &::-webkit-scrollbar {
-        width: 6px;
+        width: 8px;
     }
 
     &::-webkit-scrollbar-thumb {
-        background: rgba(255, 255, 255, 0.18);
+        background: rgba(255, 255, 255, 0.16);
+        border: 2px solid transparent;
         border-radius: 999px;
     }
 `;
 
 const SheetNavigation = styled(ArticleNavigation)`
     padding: 0;
-    gap: 16px;
+    gap: 20px;
     box-shadow: none;
     background: transparent;
 
@@ -120,25 +123,35 @@ const SheetNavigation = styled(ArticleNavigation)`
         font-size: ${(props) => props.theme.font.size.md};
         color: ${(props) => props.theme.color.gray[300]};
         line-height: ${(props) => props.theme.font.height.md};
+        letter-spacing: 0.01em;
     }
 
     & ul {
-        gap: 12px;
+        gap: 14px;
     }
 
     & a {
-        color: ${(props) => props.theme.color.gray[100]};
+        color: rgba(244, 244, 244, 0.92);
+        font-weight: ${(props) => props.theme.font.weight.semi_bold};
+        letter-spacing: 0.005em;
+        transition: color 0.2s ease;
+
+        &:hover,
+        &:focus-visible {
+            color: ${(props) => props.theme.color.primary.light};
+        }
     }
 
     & p {
         font-size: ${(props) => props.theme.font.size.extra_sm};
         line-height: ${(props) => props.theme.font.height.lg};
+        color: rgba(227, 227, 227, 0.72);
     }
 `;
 
 const PolicyText = styled(Text)`
     font-size: ${(props) => props.theme.font.size.extra_sm};
-    color: ${(props) => props.theme.color.gray[100]};
+    color: rgba(227, 227, 227, 0.64);
     text-align: center;
     line-height: ${(props) => props.theme.font.height.md};
 `;

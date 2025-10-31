@@ -19,7 +19,7 @@ const SidebarContent = styled.aside`
     min-height: calc(80% - 10px);
     height: auto;
     border-radius: 32px 32px 0 0 ;
-    background-color: ${(props) => rgba(props.theme.color.black[100], 0.35)};
+    background-color: ${(props) => rgba(props.theme.color.black[100], 0.85)};
     backdrop-filter: blur(18px);
     box-shadow: ${(props) => props.theme.lines.top} ${(props) => props.theme.color.gray[300]},
                 ${(props) => props.theme.lines.left} ${(props) => props.theme.color.gray[300]},
@@ -32,7 +32,7 @@ const SidebarContent = styled.aside`
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 12px 0px;
+        padding: 12px 24px;
         box-shadow: ${(props) => props.theme.lines.bottom} ${(props) => props.theme.color.gray[300]};
     
         & .header-text {
@@ -106,50 +106,34 @@ export default function Sidebar({
     onClose,
     instant
 }: SidebarProps) {
-
-    return <SidebarContent>
-        <div
-            className='header'
-        >
-            <Text
-                className='header-text'
-            >
-                {instant}
-            </Text>
-            <button
-                type='button'
-                className='header-close'
-                onClick={onClose}
-                aria-label='Fechar menu lateral'
-            >
-                <X size={20} weight='bold' aria-hidden='true' />
-            </button>
-        </div>
-        {
-            instant === 'Menu' ? (
+    return (
+        <SidebarContent>
+            <div className='header'>
+                <Text className='header-text'>{instant}</Text>
+                <button
+                    type='button'
+                    className='header-close'
+                    onClick={onClose}
+                    aria-label='Fechar menu lateral'
+                >
+                    <X size={20} weight='bold' aria-hidden='true' />
+                </button>
+            </div>
+            {instant === 'Menu' ? (
                 <>
-                    <StyleNav />
-                    <aside 
-                        className='sec-button'
-                    >
+                    <StyleNav onNavigate={onClose} />
+                    <aside className='sec-button'>
                         <Button />
                     </aside>
-                    <footer
-                        className='sec-policy'
-                    >  
-                        <Text
-                            as='p'
-                            className='policy-text'
-                        >
+                    <footer className='sec-policy'>
+                        <Text as='p' className='policy-text'>
                             © 2024 Nova Metálica. Todos os direitos reservados.
-                        </Text>  
+                        </Text>
                     </footer>
                 </>
             ) : (
-                <>
-                    <p>Indice</p>
-                </>
-            )
-        }
-    </SidebarContent>
+                <p>Indice</p>
+            )}
+        </SidebarContent>
+    )
 }

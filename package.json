@@ -16,6 +16,7 @@
     "@supabase/supabase-js": "^2.76.0",
     "@typescript-eslint/eslint-plugin": "^8.46.2",
     "@typescript-eslint/parser": "^8.46.2",
+  "aos": "^2.3.4",
     "class-variance-authority": "^0.7.1",
     "contentlayer": "^0.3.4",
     "formidable": "^3.5.1",
@@ -40,6 +41,7 @@
     "@types/node": "^20.19.22",
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19",
+  "@types/aos": "^3.0.7",
     "eslint": "^9.38.0",
     "eslint-config-next": "15.5.6",
     "typescript": "^5"

@@ -1,9 +1,9 @@
 import { useRouter } from 'next/router';
 import { rgba } from 'polished';
 import styled from '@emotion/styled';
-
 import Link from 'next/link';
 import Text from '../text';
+import { useCallback, type MouseEvent } from 'react';
 
 const Navbar = styled.nav`
     display: flex;
@@ -45,43 +45,103 @@ const Navbar = styled.nav`
 
 `
 
+type NavigationLink = {
+    text: string;
+    href: string;
+    external?: boolean;
+    anchorId?: string;
+};
+
 interface NavProps {
     className?: string;
+    onNavigate?: () => void;
 }
 
 export default function Nav({
-    className
+    className,
+    onNavigate
 }: NavProps) {
+    const router = useRouter();
+    const navigationLinks: NavigationLink[] = [
+        { text: 'Artigos', href: '/' },
+        { text: 'Categorias', href: '/#categorias', anchorId: 'categorias' },
+        { text: 'Website', href: 'https://novametalica.com.br', external: true }
+    ];
 
-    const url = useRouter();
-    console.log(url.pathname);
+    const handleAnchorNavigation = useCallback(
+        (event: MouseEvent<HTMLAnchorElement>, anchorId: string) => {
+            if (router.pathname === '/') {
+                event.preventDefault();
+                onNavigate?.();
 
-    const navigationLinks = [
-        { text: 'Artigos', pathname: '' },
-        { text: 'Categorias', pathname: 'categorias' },
-        { text: 'Website', pathname: 'https://novametalica.com.br' },
-    ]
+                const target = typeof document !== 'undefined' ? document.getElementById(anchorId) : null;
 
-    return <Navbar className={className}>
-        {navigationLinks.map((nav, i) => (
-            <Link 
-                key={i} 
-                href={
-                    nav.pathname.includes('https') 
-                    ? nav.pathname
-                    : `/${nav.pathname.toLowerCase()}` 
+                if (target) {
+                    try {
+                        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    } catch (error) {
+                        target.scrollIntoView();
+                    }
                 }
-                prefetch={true}
-                className={
-                    url.pathname === `/${nav.pathname.toLowerCase()}` ? 'active' : 'inactive'
+
+                void router.replace(`/#${anchorId}`, undefined, { shallow: true, scroll: false });
+                return;
+            }
+
+            onNavigate?.();
+        },
+        [onNavigate, router]
+    );
+
+    return (
+        <Navbar className={className}>
+            {navigationLinks.map((nav) => {
+                const isActive = nav.external
+                    ? false
+                    : router.asPath === nav.href;
+
+                if (nav.external) {
+                    return (
+                        <a
+                            key={nav.href}
+                            href={nav.href}
+                            className={isActive ? 'active' : 'inactive'}
+                            target='_blank'
+                            rel='noopener noreferrer'
+                            onClick={onNavigate}
+                        >
+                            <Text className='text-link'>{nav.text}</Text>
+                        </a>
+                    );
                 }
-            >
-                <Text
-                    className='text-link'
-                >
-                    {nav.text}
-                </Text>
-            </Link>
-        ))}
-    </Navbar>
+
+                if (nav.anchorId) {
+                    return (
+                        <Link
+                            key={nav.href}
+                            href={nav.href}
+                            scroll={false}
+                            prefetch={false}
+                            className={isActive ? 'active' : 'inactive'}
+                            onClick={(event) => handleAnchorNavigation(event, nav.anchorId!)}
+                        >
+                            <Text className='text-link'>{nav.text}</Text>
+                        </Link>
+                    );
+                }
+
+                return (
+                    <Link
+                        key={nav.href}
+                        href={nav.href}
+                        prefetch
+                        className={isActive ? 'active' : 'inactive'}
+                        onClick={onNavigate}
+                    >
+                        <Text className='text-link'>{nav.text}</Text>
+                    </Link>
+                );
+            })}
+        </Navbar>
+    );
 }

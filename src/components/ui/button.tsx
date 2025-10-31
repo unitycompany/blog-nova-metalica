@@ -14,18 +14,25 @@ const ButtonStyled = styled.button`
     box-shadow: inset 0 0 10px 0 ${(props) => rgba(props.theme.color.gray[300], 0.2)};
     position: relative;
     overflow: hidden;
-    transition: all 0.4s ease;
+    transition:
+        transform 0.45s cubic-bezier(0.22, 1, 0.36, 1),
+        box-shadow 0.45s ease,
+        border-color 0.45s ease,
+        background-color 0.45s ease;
     border-radius: 32px;
+    transform: translateY(0);
 
     &:hover{
-        box-shadow: inset 0 0 14px 0 ${(props) => rgba(props.theme.color.gray[500], 0.4)};
+        border-color: ${(props) => rgba(props.theme.color.gray[500], 0.55)};
+        box-shadow: inset 0 0 16px 0 ${(props) => rgba(props.theme.color.gray[500], 0.36)},
+            0 18px 40px ${(props) => rgba(props.theme.color.black[100], 0.25)};
 
-        &.icon {
+        & .icon {
             transform: scale(0.96);
         }
 
         & .icon svg{
-            transform: translate(50px, -50px);
+            transform: translate(28px, -28px);
         }
 
         & .icon-hover {
@@ -37,7 +44,7 @@ const ButtonStyled = styled.button`
         }
 
         & .text-button {
-            transform: scale(0.98);
+            transform: translateX(2px);
         }
     } 
 
@@ -45,7 +52,9 @@ const ButtonStyled = styled.button`
         font-size: ${(props) => props.theme.font.size.md}; // 22px
         font-weight: ${(props) => props.theme.font.weight.regular}; // 400
         color: ${(props) => props.theme.color.gray[500]};
-        transition: all 0.1s ease;
+        transition:
+            transform 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+            color 0.35s ease;
     }
     
     & .icon-hover {
@@ -53,8 +62,8 @@ const ButtonStyled = styled.button`
         right: 6px;
 
         & svg {
-            transform: translate(-50px, 50px);
-            transition: all 0.2s ease;
+            transform: translate(-32px, 32px);
+            transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
         }
     }
 
@@ -62,13 +71,15 @@ const ButtonStyled = styled.button`
         background-color: ${(props) => props.theme.color.gray[500]};
         border: 1px solid ${(props) => props.theme.color.gray[100]};
         box-shadow: 0 0 10px ${(props) => rgba(props.theme.color.primary.main, 0.2)};
-        transition: all 0.2s ease;
+        transition:
+            transform 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+            box-shadow 0.35s ease;
         border-radius: 42px;
 
         & svg {
             width: 24px;
             height: 24px;
-            transition: all 0.2s ease;
+            transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
         }
     } 
     

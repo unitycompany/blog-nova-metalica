@@ -13,6 +13,27 @@ export type PublishedArticlesResult = {
   articles: ArticlePreview[]
 }
 
+export function dedupeArticlePreviews(items: ArticlePreview[]): ArticlePreview[] {
+  const seen = new Set<string>()
+  const result: ArticlePreview[] = []
+
+  for (const item of items) {
+    const key = (item.permalink && item.permalink.toLowerCase()) ||
+      (item.slug && item.slug.toLowerCase()) ||
+      (item.id && String(item.id).toLowerCase()) ||
+      `${(item.title || '').toLowerCase()}::${item.publishedAt || ''}`
+
+    if (seen.has(key)) {
+      continue
+    }
+
+    seen.add(key)
+    result.push(item)
+  }
+
+  return result
+}
+
 type ArticleRow = Pick<
   Database['public']['Tables']['articles']['Row'],
   | 'id'
@@ -173,7 +194,7 @@ export async function getPublishedArticlePreviews(): Promise<PublishedArticlesRe
   try {
     const adminClient = getSupabaseAdmin()
     const articles = await loadPublishedArticlesFromSupabase(adminClient)
-    return { source: 'supabase-admin', articles }
+    return { source: 'supabase-admin', articles: dedupeArticlePreviews(articles) }
   } catch (error) {
     if (process.env.NODE_ENV !== 'production') {
       console.warn('Failed to load articles using Supabase admin client:', error)
@@ -184,7 +205,7 @@ export async function getPublishedArticlePreviews(): Promise<PublishedArticlesRe
     const publicClient = tryGetSupabaseClient()
     if (publicClient) {
       const articles = await loadPublishedArticlesFromSupabase(publicClient)
-      return { source: 'supabase-public', articles }
+      return { source: 'supabase-public', articles: dedupeArticlePreviews(articles) }
     }
   } catch (error) {
     if (process.env.NODE_ENV !== 'production') {
@@ -241,5 +262,5 @@ function normalizeContentlayerPosts(): ArticlePreview[] {
 }
 
 export function getContentlayerArticlePreviews(): ArticlePreview[] {
-  return normalizeContentlayerPosts()
+  return dedupeArticlePreviews(normalizeContentlayerPosts())
 }

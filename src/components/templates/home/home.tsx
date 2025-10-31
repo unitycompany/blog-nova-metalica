@@ -1,4 +1,3 @@
-import GridSection from "@/components/grid-section";
 import HeroSection from "@/components/hero-section";
 import type { ArticlePreview } from '@/types/article-preview';
 
@@ -10,7 +9,6 @@ export default function HomeSection({ initialPosts = [] }: HomeSectionProps) {
     return (
         <>
             <HeroSection initialPosts={initialPosts} />
-            <GridSection posts={initialPosts} />
         </>
     )
 }

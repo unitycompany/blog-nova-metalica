@@ -47,7 +47,7 @@ const PatternLines = ({
     top: '50%',
     left: '50%',
     width: '200vw',
-    height: '200vh',
+    height: '400vh',
     transform: `translate(-50%, -50%) rotate(${angle}deg)`,
     transformOrigin: 'center',
     backgroundImage: `repeating-linear-gradient(

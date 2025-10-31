@@ -40,7 +40,7 @@ const LayerBlur = styled.div<PatternLightProps & { theme?: AppTheme }>`
             opacity: 0.3;
         }
         50% {
-            opacity: 1;
+            opacity: 0.6;
         }
         100% {
             opacity: 0.3;
@@ -58,7 +58,18 @@ interface PatternLightProps {
 export default function PatternLight({
     top, left, width, height, className
 }: PatternLightProps){
-    return <LayerBlur className={className} top={top} left={left} width={width} height={height}>
+    return (
+        <LayerBlur
+            className={className}
+            top={top}
+            left={left}
+            width={width}
+            height={height}
+            data-aos='fade-in'
+            data-aos-offset='0'
+            data-aos-duration='900'
+        >
 
-    </LayerBlur>
+        </LayerBlur>
+    )
 }
