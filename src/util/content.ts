@@ -56,8 +56,16 @@ export async function deleteArticleMdx(slug: string) {
 	try {
 		await fs.unlink(filePath)
 	} catch (error: unknown) {
-		if (isNodeError(error) && error.code === 'ENOENT') {
-			return
+		if (isNodeError(error)) {
+			const ignorableCodes = new Set(['ENOENT', 'EACCES', 'EPERM', 'EROFS'])
+
+			if (typeof error.code === 'string' && ignorableCodes.has(error.code)) {
+				if (process.env.NODE_ENV !== 'production') {
+					console.warn(`Ignorando falha ao remover arquivo MDX (${error.code}):`, filePath)
+				}
+
+				return
+			}
 		}
 
 		throw error
@@ -358,6 +366,13 @@ function deriveSlug(frontmatterSlug: unknown, fileName: string) {
 
 		pendingContentlayerBuild = ensureCommand()
 			.then(({ command, args }) => runCommand(command, args))
+			.catch((error) => {
+				if (process.env.NODE_ENV !== 'production') {
+					throw error
+				}
+
+				console.warn('[contentlayer] Ignorando falha ao regenerar conteúdo em produção:', error)
+			})
 			.finally(() => {
 				pendingContentlayerBuild = null
 			})
