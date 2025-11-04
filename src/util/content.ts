@@ -43,11 +43,31 @@ export async function writeArticleMdx(payload: ArticleContentPayload) {
 		const yamlContent = stringifyYaml(frontmatter).trimEnd()
 			const body = payload.content.trimEnd()
 
-	await fs.mkdir(POSTS_DIRECTORY, { recursive: true })
+	try {
+		await fs.mkdir(POSTS_DIRECTORY, { recursive: true })
+	} catch (error) {
+		if (!isNodeError(error) || !isReadonlyFsError(error)) {
+			throw error
+		}
+		if (process.env.NODE_ENV !== 'production') {
+			console.warn(`[content] Ignorando falha ao criar diretório de posts (${error.code}). O arquivo MDX não será persistido.`)
+		}
+		return
+	}
+
 	const filePath = getArticleFilePath(payload.slug)
 	const mdxContent = [`---`, yamlContent, `---`, '', body, ''].join('\n')
 
-	await fs.writeFile(filePath, mdxContent, 'utf8')
+	try {
+		await fs.writeFile(filePath, mdxContent, 'utf8')
+	} catch (error) {
+		if (!isNodeError(error) || !isReadonlyFsError(error)) {
+			throw error
+		}
+		if (process.env.NODE_ENV !== 'production') {
+			console.warn(`[content] Ignorando falha ao salvar arquivo MDX (${error.code}): ${filePath}`)
+		}
+	}
 }
 
 export async function deleteArticleMdx(slug: string) {
@@ -57,9 +77,7 @@ export async function deleteArticleMdx(slug: string) {
 		await fs.unlink(filePath)
 	} catch (error: unknown) {
 		if (isNodeError(error)) {
-			const ignorableCodes = new Set(['ENOENT', 'EACCES', 'EPERM', 'EROFS'])
-
-			if (typeof error.code === 'string' && ignorableCodes.has(error.code)) {
+			if (typeof error.code === 'string' && (error.code === 'ENOENT' || isReadonlyFsError(error))) {
 				if (process.env.NODE_ENV !== 'production') {
 					console.warn(`Ignorando falha ao remover arquivo MDX (${error.code}):`, filePath)
 				}
@@ -276,6 +294,11 @@ function parseMdx(rawContent: string) {
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {
 	return typeof error === 'object' && error !== null && 'code' in error
+}
+
+function isReadonlyFsError(error: NodeJS.ErrnoException) {
+	const readonlyCodes = new Set(['EROFS', 'EACCES', 'EPERM'])
+	return typeof error.code === 'string' && readonlyCodes.has(error.code)
 }
 
 function deriveSlug(frontmatterSlug: unknown, fileName: string) {
