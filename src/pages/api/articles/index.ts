@@ -3,6 +3,9 @@ import { getAdminRequestContext } from '@/lib/auth/adminSession'
 import { articlesRepository } from '@/lib/repositories/articles'
 import type { Article } from '@/lib/supabase'
 import { listArticleFiles, regenerateContentlayer, writeArticleMdx } from '@/util/content'
+import { mdxToHtml } from '@/util/mdxConverter'
+
+type ArticleInsertPayload = Parameters<typeof articlesRepository.create>[0]
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
@@ -30,15 +33,31 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           return res.status(400).json({ error: 'Conteúdo do artigo é obrigatório.' })
         }
 
-        const newArticle = await articlesRepository.create(req.body)
+        const { content_html: _unusedContentHtml, ...incoming } = (req.body ?? {}) as Record<string, unknown>
+        const contentValue = typeof incoming.content === 'string' ? incoming.content : ''
+        const rawMdxValue = typeof incoming.raw_mdx === 'string' && incoming.raw_mdx.trim().length > 0
+          ? incoming.raw_mdx
+          : contentValue
+        const processedHtmlValue = typeof incoming.processed_mdx === 'string' && incoming.processed_mdx.trim().length > 0
+          ? incoming.processed_mdx
+          : mdxToHtml(rawMdxValue)
+
+        const articlePayload: ArticleInsertPayload = {
+          ...(incoming as ArticleInsertPayload),
+          content: contentValue,
+          raw_mdx: rawMdxValue,
+          processed_mdx: processedHtmlValue,
+        }
+
+        const newArticle = await articlesRepository.create(articlePayload)
 
         try {
           await writeArticleMdx({
             ...newArticle,
-            ...req.body,
+            ...articlePayload,
             slug: newArticle.slug,
-            contentlayer_meta: req.body.contentlayer_meta ?? newArticle.contentlayer_meta,
-            content: req.body.content
+            contentlayer_meta: articlePayload.contentlayer_meta ?? newArticle.contentlayer_meta,
+            content: rawMdxValue
           })
 
           await regenerateContentlayer()
@@ -58,7 +77,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           throw writeError
         }
 
-        return res.status(201).json({ ...newArticle, content: req.body.content })
+        return res.status(201).json({
+          ...newArticle,
+          content: rawMdxValue,
+          raw_mdx: rawMdxValue,
+          processed_mdx: processedHtmlValue,
+        })
 
       default:
         return res.status(405).json({ error: 'Method not allowed' })
@@ -190,6 +214,8 @@ function buildArticlePayloadFromFile(file: Awaited<ReturnType<typeof listArticle
     subtitle,
     excerpt,
     content: file.content,
+  raw_mdx: file.content,
+  processed_mdx: mdxToHtml(file.content ?? ''),
     status,
   author_id: undefined,
   category_id: undefined,

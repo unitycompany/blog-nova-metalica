@@ -1,26 +1,25 @@
 import { useRouter } from "next/router"
 import Head from "next/head"
-import { allPosts } from "contentlayer/generated";
 import type { GetStaticPaths, GetStaticProps } from 'next';
-import type { Post } from 'contentlayer/generated';
 import styled from '@emotion/styled';
 import { keyframes } from '@emotion/react';
 import ArticleSection from "@/components/article-section";
 import { ArticleTopic } from "@/components/navigation/navigation";
 import { categories } from "@/content/categories";
 import { authors } from "@/content/authors";
-import { useMDXComponent } from 'next-contentlayer/hooks';
 import Link from "next/link";
 import React from "react";
 import type { ComponentPropsWithoutRef } from 'react';
-import type { MDXComponents } from 'mdx/types';
 import type { NextRouter } from 'next/router';
 import { media } from "@/styles/media";
 import { resolveAssetUrl } from '@/util/assets';
 import { articlesRepository } from '@/lib/repositories/articles';
 import type { Article } from '@/lib/supabase';
-import { mdxToHtml } from '@/util/mdxConverter';
-// ...existing code...
+import { htmlToMdx, mdxToHtml } from '@/util/mdxConverter';
+import { getSupabaseAdmin } from '@/lib/supabase';
+import { readArticleContent } from '@/util/content';
+
+type Post = { [key: string]: any }
 
 const DEFAULT_SITE_URL = 'https://blog.novametalica.com.br';
 const DEFAULT_SITE_NAME = 'Blog Nova Metálica';
@@ -610,8 +609,14 @@ function buildFallbackPost(article: FallbackArticlePayload): Post {
   const slugFromMeta = normalizeSlugParam(metaString('slug'))
   const normalizedSlug = normalizeSlugParam(slugFromMeta || article.slug || '')
   const effectiveSlug = normalizedSlug || normalizeSlugParam(article.slug) || article.slug
-  const rawContent = typeof article.content === 'string' ? article.content : ''
-  const htmlContent = article.contentHtml || ''
+  const rawContent = typeof article.raw_mdx === 'string' && article.raw_mdx.trim().length > 0
+    ? article.raw_mdx
+    : typeof article.content === 'string'
+      ? article.content
+      : ''
+  const resolvedHtml = article.contentHtml || (typeof article.processed_mdx === 'string' ? article.processed_mdx : '')
+  const htmlContent = resolvedHtml
+    || (rawContent && /<\s*[a-z][^>]*>/i.test(rawContent) ? rawContent : mdxToHtml(rawContent))
   const wordCount = metaNumber('word_count') ?? article.word_count ?? estimateWordCount(rawContent || htmlContent)
   const readingMinutes = metaNumber('reading_time_minutes') ?? article.reading_time ?? (wordCount ? Math.max(1, Math.round(wordCount / 200)) : 0)
   const readingTime = {
@@ -656,18 +661,18 @@ function buildFallbackPost(article: FallbackArticlePayload): Post {
     tags: toStringArray(meta.tags) ?? (Array.isArray(article.tags) ? article.tags : undefined),
     category: metaString('category') || '',
     canonical_url: canonicalFromMeta || canonicalFromDb || undefined,
-  robots_index: (metaString('robots_index') || article.robots_index || undefined) as Post['robots_index'] | undefined,
-  robots_follow: (metaString('robots_follow') || article.robots_follow || undefined) as Post['robots_follow'] | undefined,
+  robots_index: metaString('robots_index') || article.robots_index || undefined,
+  robots_follow: metaString('robots_follow') || article.robots_follow || undefined,
   robots_advanced: metaString('robots_advanced') || undefined,
     sitemap_priority: metaNumber('sitemap_priority'),
-  sitemap_changefreq: metaString('sitemap_changefreq') as Post['sitemap_changefreq'] | undefined,
+  sitemap_changefreq: metaString('sitemap_changefreq') || undefined,
     lastmod: metaString('lastmod') || article.updated_at || undefined,
     breadcrumbs: Array.isArray(meta.breadcrumbs) ? meta.breadcrumbs : undefined,
     permalink,
     og_title: metaString('og_title') || article.seo_title || article.title || undefined,
     og_description: metaString('og_description') || article.seo_description || article.excerpt || undefined,
-  og_type: metaString('og_type') as Post['og_type'] | undefined,
-  twitter_card: metaString('twitter_card') as Post['twitter_card'] | undefined,
+  og_type: metaString('og_type') || undefined,
+  twitter_card: metaString('twitter_card') || undefined,
   twitter_site: metaString('twitter_site') || undefined,
   twitter_creator: metaString('twitter_creator') || undefined,
     author_slug: metaString('author_slug') || undefined,
@@ -709,7 +714,7 @@ function buildFallbackPost(article: FallbackArticlePayload): Post {
     cover_image: metaString('cover_image') || article.cover_image || undefined,
     og_image: ogImageCandidate,
     slug: effectiveSlug,
-    status: ((metaString('status') || article.status) as Post['status']) ?? 'published',
+  status: metaString('status') || article.status || 'published',
     published_at: metaString('published_at') || article.published_at || undefined,
     body: {
       raw: htmlContent,
@@ -719,79 +724,12 @@ function buildFallbackPost(article: FallbackArticlePayload): Post {
       frontmatter: meta,
     },
     url: canonicalUrl,
-    readingTime: readingTime as Post['readingTime'],
+  readingTime,
     wordCount: wordCount ?? 0,
     contentHash: `supabase-${article.id ?? effectiveSlug}`,
   }
 
   return fallbackPost as Post
-}
-
-function getPostSlugCandidates(post: Post): string[] {
-  const candidates = new Set<string>()
-
-  const primarySlug = normalizeSlugParam(typeof post.slug === 'string' ? post.slug : '')
-  if (primarySlug) {
-    candidates.add(primarySlug)
-    const leaf = primarySlug.split('/').pop()
-    if (leaf) {
-      candidates.add(leaf)
-    }
-  }
-
-  const flattenedPath = normalizeSlugParam(
-    typeof post._raw?.flattenedPath === 'string' ? post._raw.flattenedPath : ''
-  )
-  if (flattenedPath) {
-    candidates.add(flattenedPath)
-    const leaf = flattenedPath.split('/').pop()
-    if (leaf) {
-      candidates.add(leaf)
-    }
-  }
-
-  return Array.from(candidates)
-}
-
-function findPostBySlug(slug: string, fallback?: Post): Post | undefined {
-  const normalizedTarget = normalizeSlugParam(slug)
-  if (!normalizedTarget) {
-    return undefined
-  }
-
-  const found = allPosts.find((post) => {
-    const candidates = getPostSlugCandidates(post)
-    return candidates.some((candidate) => normalizeSlugParam(candidate) === normalizedTarget)
-  })
-
-  if (found) {
-    return found
-  }
-
-  if (fallback) {
-    const candidates = getPostSlugCandidates(fallback)
-    if (candidates.some((candidate) => normalizeSlugParam(candidate) === normalizedTarget)) {
-      return fallback
-    }
-  }
-
-  return undefined
-}
-
-function getRouteSlugFromPost(post: Post): string {
-  const candidates = getPostSlugCandidates(post)
-  const leafCandidate = candidates.find((candidate) => !candidate.includes('/'))
-  if (leafCandidate) {
-    return leafCandidate
-  }
-
-  const fallback = candidates[0] ?? ''
-  if (!fallback) {
-    return ''
-  }
-
-  const leaf = fallback.split('/').pop()
-  return leaf ?? fallback
 }
 
 export default function PostSlug({ slug, fallbackArticle }: PostSlugProps) {
@@ -816,7 +754,7 @@ export default function PostSlug({ slug, fallbackArticle }: PostSlugProps) {
       }
     }, [fallbackArticle])
 
-    const postFilter = findPostBySlug(activeSlug, fallbackPost);
+  const postFilter = fallbackPost;
 
   const categoryBreadcrumb = Array.isArray(postFilter?.breadcrumbs)
     ? postFilter?.breadcrumbs?.[1]
@@ -845,7 +783,7 @@ export default function PostSlug({ slug, fallbackArticle }: PostSlugProps) {
   const authorAvatar = authorAvatarRaw ? normalizeAssetUrl(authorAvatarRaw) : '';
 
   const imageMeta = (postFilter?.image_meta as ImageMeta | undefined) ?? undefined;
-  const routeSlugFromPost = postFilter ? getRouteSlugFromPost(postFilter) : '';
+  const routeSlugFromPost = postFilter?.slug ? normalizeSlugParam(String(postFilter.slug)) : '';
   const permalink = cleanString(postFilter?.permalink);
   const normalizedPermalink = permalink ? `/${normalizeSlugParam(permalink)}` : '';
   const canonicalFallbackPath = normalizedPermalink || (routeSlugFromPost ? `/blog/post/${normalizeSlugParam(routeSlugFromPost)}` : '/blog');
@@ -1067,23 +1005,54 @@ export default function PostSlug({ slug, fallbackArticle }: PostSlugProps) {
     });
   }
 
-  const rawBody = postFilter?.body?.raw ?? '';
-  const isHtmlBody = Boolean(rawBody) && /<\s*(p|div|span|table|thead|tbody|tr|td|th|ul|ol|li|img|h[1-6]|blockquote|strong|em|figure|figcaption|pre|code|br|hr|section|article)\b/i.test(rawBody.trim());
+  const { htmlContent: fallbackHtmlContent, mdxContent: fallbackMdxContent } = React.useMemo(() => {
+    const bodyRaw = typeof postFilter?.body?.raw === 'string' ? postFilter.body.raw.trim() : ''
+    const rawMdx = typeof fallbackArticle?.raw_mdx === 'string' ? fallbackArticle.raw_mdx.trim() : ''
+    const legacyMdx = typeof fallbackArticle?.content === 'string' ? fallbackArticle.content.trim() : ''
+    const processedHtml = typeof fallbackArticle?.contentHtml === 'string' && fallbackArticle.contentHtml.trim().length > 0
+      ? fallbackArticle.contentHtml.trim()
+      : typeof fallbackArticle?.processed_mdx === 'string'
+        ? fallbackArticle.processed_mdx.trim()
+        : ''
+
+    const htmlFromLegacy = legacyMdx && /<\s*[a-z][^>]*>/i.test(legacyMdx) ? legacyMdx : ''
+    const htmlCandidates = [bodyRaw, processedHtml, htmlFromLegacy]
+    let htmlContent = htmlCandidates.find((candidate) => candidate && candidate.length > 0) ?? ''
+
+    if (!htmlContent && rawMdx) {
+      htmlContent = mdxToHtml(rawMdx)
+    } else if (!htmlContent && legacyMdx) {
+      htmlContent = mdxToHtml(legacyMdx)
+    }
+
+    let mdxContent = rawMdx || (legacyMdx && !/<\s*[a-z][^>]*>/i.test(legacyMdx) ? legacyMdx : '')
+
+    if (!mdxContent && htmlContent) {
+      mdxContent = htmlToMdx(htmlContent)
+    }
+
+    return {
+      htmlContent,
+      mdxContent,
+    }
+  }, [postFilter?.body?.raw, fallbackArticle?.raw_mdx, fallbackArticle?.contentHtml, fallbackArticle?.processed_mdx, fallbackArticle?.content])
+  const isHtmlBody = Boolean(fallbackHtmlContent) && /<\s*(p|div|span|table|thead|tbody|tr|td|th|ul|ol|li|img|h[1-6]|blockquote|strong|em|figure|figcaption|pre|code|br|hr|section|article)\b/i.test(fallbackHtmlContent.trim());
   const contentRef = React.useRef<HTMLDivElement | null>(null);
 
     const headings = React.useMemo<ArticleTopic[]>(() => {
       const slugCounts = new Map<string, number>();
       const results: ArticleTopic[] = [];
 
-      if (!rawBody) {
+      if (!fallbackHtmlContent && !fallbackMdxContent) {
         return results;
       }
 
       if (isHtmlBody) {
         const headingRegex = /<(h[1-6])[^>]*>([\s\S]*?)<\/\1>/gi;
         let match: RegExpExecArray | null;
+        const htmlSource = fallbackHtmlContent || '';
 
-        while ((match = headingRegex.exec(rawBody)) !== null) {
+        while ((match = headingRegex.exec(htmlSource)) !== null) {
           const level = Number(match[1].substring(1));
           const rawTitle = match[2];
           const title = sanitizeHeadingText(rawTitle);
@@ -1109,7 +1078,7 @@ export default function PostSlug({ slug, fallbackArticle }: PostSlugProps) {
         return results;
       }
 
-      const lines = rawBody.split('\n');
+  const lines = fallbackMdxContent ? fallbackMdxContent.split('\n') : [];
       let inCodeBlock = false;
 
       for (const line of lines) {
@@ -1153,7 +1122,7 @@ export default function PostSlug({ slug, fallbackArticle }: PostSlugProps) {
       }
 
       return results;
-    }, [rawBody, isHtmlBody]);
+  }, [fallbackHtmlContent, fallbackMdxContent, isHtmlBody]);
 
     React.useEffect(() => {
       if (!contentRef.current) {
@@ -1176,21 +1145,7 @@ export default function PostSlug({ slug, fallbackArticle }: PostSlugProps) {
       }
     }, [headings]);
 
-    /* Mantemos apenas mapeamento mínimo (usa MDXContainer para estilos globais) */
-    const mdxComponents: MDXComponents = {
-      a: MDXLink,
-      img: MDXImage,
-    };
-
-  const fallbackMdxCode = 'return { default: function Empty(){ return null; } };';
-  const mdxCodeCandidate = typeof postFilter?.body?.code === 'string'
-    ? String(postFilter?.body?.code ?? '')
-    : '';
-  const mdxCode = mdxCodeCandidate.trim()
-    ? mdxCodeCandidate
-    : fallbackMdxCode;
-  const MDXContent = useMDXComponent(mdxCode);
-  const htmlContent = isHtmlBody && rawBody ? rawBody : null;
+  const htmlContent = fallbackHtmlContent;
   const normalizedHtmlContent = React.useMemo(() => {
     if (!htmlContent) {
       return '';
@@ -1290,7 +1245,7 @@ export default function PostSlug({ slug, fallbackArticle }: PostSlugProps) {
             {normalizedHtmlContent ? (
               <div dangerouslySetInnerHTML={{ __html: normalizedHtmlContent }} />
             ) : (
-              <MDXContent components={mdxComponents} />
+              <noscript />
             )}
           </MDXContainer>
         </ArticleSection>
@@ -1304,38 +1259,42 @@ type PostPageParams = {
 }
 
 export const getStaticPaths: GetStaticPaths<PostPageParams> = async () => {
-  const uniqueSlugs = Array.from(
-    new Set(
-      allPosts
-        .map((post) => getRouteSlugFromPost(post))
-        .map((slugValue) => normalizeSlugParam(slugValue))
-        .filter((slugValue) => Boolean(slugValue))
-    )
-  )
+  try {
+    const supabase = getSupabaseAdmin()
+    const { data, error } = await supabase
+      .from('articles')
+      .select('slug')
+      .eq('status', 'published')
 
-  const paths = uniqueSlugs.map((slugValue) => ({
-    params: { slug: slugValue }
-  }))
+    if (error) {
+      throw error
+    }
 
-  return {
-    paths,
-    fallback: 'blocking'
+    const slugs = Array.isArray(data) ? data : []
+    const paths = slugs
+      .map((row) => (typeof row?.slug === 'string' ? normalizeSlugParam(row.slug) : ''))
+      .filter((slugValue): slugValue is string => Boolean(slugValue))
+      .map((slugValue) => ({ params: { slug: slugValue } }))
+
+    return {
+      paths,
+      fallback: 'blocking'
+    }
+  } catch (error) {
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn('Falha ao gerar paths de artigos a partir do Supabase:', error)
+    }
+
+    return {
+      paths: [],
+      fallback: 'blocking'
+    }
   }
 }
 
 export const getStaticProps: GetStaticProps<PostSlugProps, PostPageParams> = async ({ params }) => {
   const slugParam = typeof params?.slug === 'string' ? params.slug : ''
   const normalizedSlug = normalizeSlugParam(slugParam)
-  const matchedPost = findPostBySlug(normalizedSlug)
-
-  if (matchedPost) {
-    return {
-      props: {
-        slug: normalizedSlug || getRouteSlugFromPost(matchedPost)
-      },
-      revalidate: 60
-    }
-  }
 
   try {
     const supabaseArticle = await articlesRepository.getBySlug(normalizedSlug)
@@ -1343,10 +1302,64 @@ export const getStaticProps: GetStaticProps<PostSlugProps, PostPageParams> = asy
       throw new Error('Artigo não encontrado no Supabase')
     }
 
-    const contentRaw = typeof supabaseArticle.content === 'string' ? supabaseArticle.content : ''
-    const contentHtml = mdxToHtml(contentRaw)
+    if (supabaseArticle.status !== 'published') {
+      return {
+        notFound: true,
+        revalidate: 60
+      }
+    }
+
+    let rawMdx = typeof supabaseArticle.raw_mdx === 'string' ? supabaseArticle.raw_mdx : ''
+    const legacyContent = typeof supabaseArticle.content === 'string' ? supabaseArticle.content : ''
+    const rawContent = rawMdx || legacyContent
+    let processedHtmlRaw = typeof supabaseArticle.processed_mdx === 'string' ? supabaseArticle.processed_mdx : ''
+    let trimmedProcessed = processedHtmlRaw.trim()
+    const trimmedRawContent = (rawContent ?? '').trim()
+    const contentLooksHtml = trimmedRawContent ? /<\s*[a-z][^>]*>/i.test(trimmedRawContent) : false
+    let resolvedHtml = trimmedProcessed
+      || (contentLooksHtml ? trimmedRawContent : '')
+      || mdxToHtml(trimmedRawContent)
+
+    // Migration-safe fallback: if DB has no content yet, source from local MDX file and persist back to Supabase
+    if (!resolvedHtml || resolvedHtml.trim().length === 0) {
+      try {
+        const fileContent = await readArticleContent(normalizedSlug)
+        if (typeof fileContent === 'string' && fileContent.trim().length > 0) {
+          rawMdx = fileContent.trim()
+          resolvedHtml = mdxToHtml(rawMdx)
+          trimmedProcessed = resolvedHtml
+
+          // Persist back so next requests render directly from Supabase
+          try {
+            await articlesRepository.update(supabaseArticle.id, {
+              raw_mdx: rawMdx,
+              processed_mdx: resolvedHtml,
+              content: rawMdx,
+            })
+          } catch (persistError) {
+            if (process.env.NODE_ENV !== 'production') {
+              console.warn('Falha ao persistir conteúdo de fallback no Supabase:', persistError)
+            }
+          }
+        }
+      } catch (fsError) {
+        if (process.env.NODE_ENV !== 'production') {
+          console.warn('Fallback local MDX ausente para o artigo:', fsError)
+        }
+      }
+    }
+
+    const contentHtml = typeof resolvedHtml === 'string' ? resolvedHtml : ''
+    const resolvedRawMdx = rawMdx || (contentLooksHtml ? htmlToMdx(trimmedRawContent) : trimmedRawContent)
+
     const fallbackArticle: FallbackArticlePayload = JSON.parse(
-      JSON.stringify({ ...supabaseArticle, content: contentRaw, contentHtml })
+      JSON.stringify({
+        ...supabaseArticle,
+        raw_mdx: resolvedRawMdx,
+        processed_mdx: contentHtml,
+        content: resolvedRawMdx,
+        contentHtml,
+      })
     ) as FallbackArticlePayload
 
     return {

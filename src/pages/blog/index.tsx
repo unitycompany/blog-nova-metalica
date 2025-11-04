@@ -2,7 +2,7 @@ import styled from '@emotion/styled'
 import type { GetStaticProps } from 'next'
 import HeroSection from '@/components/hero-section'
 import type { ArticlePreview } from '@/types/article-preview'
-import { getContentlayerArticlePreviews, getPublishedArticlePreviews } from '@/lib/articles/previews'
+import { getPublishedArticlePreviews } from '@/lib/articles/previews'
 
 const BlogContainer = styled.main`
     width: 100%;
@@ -38,7 +38,7 @@ export const getStaticProps: GetStaticProps<BlogPageProps> = async () => {
 
         return {
             props: {
-                initialPosts: getContentlayerArticlePreviews()
+                initialPosts: []
             },
             revalidate: 60
         }

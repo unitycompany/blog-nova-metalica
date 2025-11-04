@@ -2,7 +2,7 @@ import HomeSection from "@/components/templates/home";
 import styled from '@emotion/styled';
 import type { GetStaticProps } from 'next';
 import type { ArticlePreview } from '@/types/article-preview';
-import { getContentlayerArticlePreviews, getPublishedArticlePreviews } from '@/lib/articles/previews';
+import { getPublishedArticlePreviews } from '@/lib/articles/previews';
 
 const ContainerHome = styled.article`
   width: 100%;
@@ -41,7 +41,7 @@ export const getStaticProps: GetStaticProps<HomePageProps> = async () => {
 
     return {
       props: {
-        initialPosts: getContentlayerArticlePreviews()
+        initialPosts: []
       },
       revalidate: 60
     }

@@ -45,6 +45,8 @@ CREATE TABLE IF NOT EXISTS articles (
     subtitle TEXT,
     excerpt TEXT,
     content TEXT NOT NULL,
+    raw_mdx TEXT,
+    processed_mdx TEXT,
     author_id UUID REFERENCES authors(id) ON DELETE SET NULL,
     category_id UUID REFERENCES categories(id) ON DELETE SET NULL,
     
@@ -84,7 +86,8 @@ CREATE TABLE IF NOT EXISTS articles (
     -- Schema.org
     tldr TEXT,
     key_takeaways TEXT[],
-    faq JSONB
+    faq JSONB,
+    contentlayer_meta JSONB DEFAULT '{}'::jsonb
 );
 
 -- ========================================

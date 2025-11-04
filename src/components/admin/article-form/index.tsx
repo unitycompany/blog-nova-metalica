@@ -4,6 +4,7 @@ import { Article, Author, Category } from '@/lib/supabase'
 import { adminFetch } from '@/lib/http/adminFetch'
 import { AssetUploader, FormField, LoadingState, Modal } from '../ui'
 import { RichTextEditor } from '../editor/rich-text-editor'
+import { htmlToMdx, mdxToHtml } from '@/util/mdxConverter'
 
 const SITE_ID = 'blog-nova-metalica'
 const CANONICAL_BASE_URL = 'https://blog.novametalica.com.br/blog/post/'
@@ -653,6 +654,7 @@ type ArticleFormState = {
 	subtitle: string
 	excerpt: string
 	content: string
+	content_html: string
 	status: Article['status']
 	category_id: string
 	author_id: string
@@ -695,6 +697,7 @@ export function ArticleForm({ articleId, onClose, showToast }: ArticleFormProps)
 		subtitle: '',
 		excerpt: '',
 		content: '',
+		content_html: '',
 		status: 'draft',
 		category_id: '',
 		author_id: '',
@@ -1220,7 +1223,18 @@ export function ArticleForm({ articleId, onClose, showToast }: ArticleFormProps)
 			}
 		}
 
-		const contentMetrics = computeContentMetrics(data.content ?? '')
+		const rawMdx = typeof data.raw_mdx === 'string' ? data.raw_mdx.trim() : ''
+		const processedHtml = typeof data.processed_mdx === 'string' ? data.processed_mdx.trim() : ''
+		const legacyContent = typeof data.content === 'string' ? data.content.trim() : ''
+		const legacyLooksLikeHtml = legacyContent ? /<\s*[a-z][^>]*>/i.test(legacyContent) : false
+		const baseContent = rawMdx
+			|| (legacyContent && !legacyLooksLikeHtml ? legacyContent : '')
+			|| (processedHtml ? htmlToMdx(processedHtml) : '')
+			|| legacyContent
+		const baseHtml = processedHtml
+			|| (legacyLooksLikeHtml ? legacyContent : '')
+			|| mdxToHtml(baseContent)
+		const contentMetrics = computeContentMetrics(baseContent)
 		metadata.reading_time_minutes = String(contentMetrics.readingMinutes)
 		metadata.word_count = String(contentMetrics.wordCount)
 
@@ -1247,7 +1261,8 @@ export function ArticleForm({ articleId, onClose, showToast }: ArticleFormProps)
 			slug: data.slug ?? '',
 			subtitle: data.subtitle ?? '',
 			excerpt: data.excerpt ?? '',
-			content: data.content ?? '',
+			content: baseContent,
+			content_html: baseHtml,
 			status: data.status ?? 'draft',
 			category_id: data.category_id ?? '',
 			author_id: data.author_id ?? '',
@@ -1553,7 +1568,8 @@ export function ArticleForm({ articleId, onClose, showToast }: ArticleFormProps)
 				throw new Error('O documento não possui conteúdo compatível para importação.')
 			}
 
-			handleEditorChange(mdxContent)
+			const htmlContent = typeof payload?.html === 'string' ? payload.html.trim() : mdxToHtml(mdxContent)
+			handleEditorChange(mdxContent, htmlContent)
 
 			const importedAssets = Array.isArray(payload.assets) ? payload.assets.length : 0
 			if (importedAssets > 0) {
@@ -1590,13 +1606,14 @@ export function ArticleForm({ articleId, onClose, showToast }: ArticleFormProps)
 		docInputRef.current?.click()
 	}
 
-	function handleEditorChange(nextContent: string) {
+	function handleEditorChange(nextContent: string, nextHtml: string) {
 		setFormState((prev) => {
 			const metrics = computeContentMetrics(nextContent || '')
 			const today = new Date().toISOString().split('T')[0]
 			return {
 				...prev,
 				content: nextContent,
+				content_html: nextHtml,
 				metadata: {
 					...prev.metadata,
 					reading_time_minutes: String(metrics.readingMinutes),
@@ -2116,6 +2133,8 @@ export function ArticleForm({ articleId, onClose, showToast }: ArticleFormProps)
 				subtitle: formState.subtitle || null,
 				excerpt: formState.excerpt,
 				content: formState.content,
+				raw_mdx: formState.content,
+				processed_mdx: formState.content_html || mdxToHtml(formState.content || ''),
 				status: formState.status,
 				category_id: formState.category_id || null,
 				author_id: formState.author_id || null,
@@ -2274,7 +2293,7 @@ export function ArticleForm({ articleId, onClose, showToast }: ArticleFormProps)
 							<RichTextEditor
 								id="article-content-editor"
 								value={formState.content}
-								onChange={(mdx) => handleEditorChange(mdx)}
+								onChange={(mdx, html) => handleEditorChange(mdx, html)}
 								placeholder="Escreva o artigo com formatação rica, como em um Google Docs."
 								disabled={saving}
 							/>

@@ -3,13 +3,12 @@ import type { ArticlePreview } from '@/types/article-preview'
 import { resolveAssetUrl } from '@/util/assets'
 import { getSupabaseAdmin, tryGetSupabaseClient, type Database } from '@/lib/supabase'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { allPosts } from 'contentlayer/generated'
 
 const DEFAULT_COVER = '/assets/logo/logotipo-nova-metalica-branca.png'
 const DEFAULT_AUTHOR = 'Equipe Nova Metálica'
 
 export type PublishedArticlesResult = {
-  source: 'supabase-admin' | 'supabase-public' | 'contentlayer'
+  source: 'supabase-admin' | 'supabase-public' | 'empty'
   articles: ArticlePreview[]
 }
 
@@ -213,54 +212,5 @@ export async function getPublishedArticlePreviews(): Promise<PublishedArticlesRe
     }
   }
 
-  return { source: 'contentlayer', articles: getContentlayerArticlePreviews() }
-}
-
-function normalizeContentlayerPosts(): ArticlePreview[] {
-  return allPosts.map((post) => {
-    const slug = typeof post.slug === 'string' ? post.slug : ''
-    const sanitizedSlug = slug.replace(/^\/+/, '')
-    const permalink = sanitizedSlug ? ensureLeadingSlash(sanitizedSlug) : '/'
-    const categorySlug = typeof post.category === 'string' ? post.category : ''
-
-    const coverImageRaw =
-      (typeof post.cover_asset_id === 'string' ? post.cover_asset_id : '') ||
-      (typeof post.cover_image === 'string' ? post.cover_image : '') ||
-      (typeof post.og_image_asset_id === 'string' ? post.og_image_asset_id : '')
-
-    const coverImage = resolveAssetUrl(coverImageRaw, DEFAULT_COVER)
-
-    const updatedAt = typeof post.updated_at === 'string' ? post.updated_at : ''
-    const publishedAt =
-      (typeof post.date === 'string' ? post.date : '') ||
-      updatedAt
-
-    const postId =
-      typeof post._id === 'string' && post._id ? post._id : permalink.replace(/^\//, '')
-
-    const categoryTitle = resolveCategoryTitle(categorySlug, '')
-    const excerpt =
-      (typeof post.excerpt === 'string' ? post.excerpt : '') ||
-      (typeof post.subtitle === 'string' ? post.subtitle : '')
-
-    const authorName =
-      (typeof post.author === 'string' ? post.author : '') || DEFAULT_AUTHOR
-
-    return {
-      id: postId,
-      slug: sanitizedSlug.split('/').pop() ?? sanitizedSlug,
-      permalink,
-      title: typeof post.title === 'string' ? post.title : 'Artigo',
-      excerpt,
-      categorySlug,
-      categoryTitle,
-      authorName,
-      coverImage,
-      publishedAt
-    }
-  })
-}
-
-export function getContentlayerArticlePreviews(): ArticlePreview[] {
-  return dedupeArticlePreviews(normalizeContentlayerPosts())
+  return { source: 'empty', articles: [] }
 }

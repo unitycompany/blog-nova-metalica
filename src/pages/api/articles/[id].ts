@@ -2,6 +2,9 @@ import type { NextApiRequest, NextApiResponse } from 'next'
 import { getAdminRequestContext } from '@/lib/auth/adminSession'
 import { articlesRepository } from '@/lib/repositories/articles'
 import { deleteArticleMdx, readArticleContent, regenerateContentlayer, writeArticleMdx } from '@/util/content'
+import { mdxToHtml } from '@/util/mdxConverter'
+
+type ArticleUpdatePayload = Parameters<typeof articlesRepository.update>[1]
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const { id } = req.query
@@ -21,11 +24,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       case 'GET': {
         const article = await articlesRepository.getById(id)
         const fileContent = await readArticleContent(article.slug)
-        return res.status(200).json({ ...article, content: fileContent ?? article.content ?? '' })
+        const rawSource = fileContent
+          ?? (typeof article.raw_mdx === 'string' ? article.raw_mdx : undefined)
+          ?? (typeof article.content === 'string' ? article.content : '')
+        const processedSource = typeof article.processed_mdx === 'string' && article.processed_mdx.trim().length > 0
+          ? article.processed_mdx
+          : mdxToHtml(rawSource ?? '')
+
+        return res.status(200).json({
+          ...article,
+          content: rawSource ?? '',
+          raw_mdx: rawSource ?? '',
+          processed_mdx: processedSource,
+        })
       }
 
       case 'PUT': {
         const hasContentUpdate = Object.prototype.hasOwnProperty.call(req.body ?? {}, 'content')
+          || Object.prototype.hasOwnProperty.call(req.body ?? {}, 'raw_mdx')
         const hasMetadataUpdate = Object.prototype.hasOwnProperty.call(req.body ?? {}, 'contentlayer_meta')
 
         if (hasContentUpdate) {
@@ -33,36 +49,70 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             return res.status(400).json({ error: 'Slug é obrigatório.' })
           }
 
-          if (typeof req.body?.content !== 'string') {
+          const hasContentString = typeof req.body?.content === 'string'
+          const hasRawMdxString = typeof req.body?.raw_mdx === 'string'
+
+          if (!hasContentString && !hasRawMdxString) {
             return res.status(400).json({ error: 'Conteúdo do artigo é obrigatório.' })
           }
         }
 
-        const existingArticle = await articlesRepository.getById(id)
-        const updated = await articlesRepository.update(id, req.body)
+        const { content_html: _unusedContentHtml, ...incoming } = (req.body ?? {}) as Record<string, unknown>
+        const articlePayload: ArticleUpdatePayload = { ...(incoming as ArticleUpdatePayload) }
 
-        const slugProvided = typeof req.body?.slug === 'string' && req.body.slug.trim() !== ''
-        const nextSlug = slugProvided ? req.body.slug : updated.slug
+        const providedContent = typeof articlePayload.content === 'string' ? articlePayload.content : undefined
+        const providedRawMdx = typeof articlePayload.raw_mdx === 'string' ? articlePayload.raw_mdx : undefined
+        let normalizedRawMdx = providedRawMdx ?? providedContent
+
+        if (normalizedRawMdx !== undefined) {
+          const sanitizedRaw = normalizedRawMdx
+          articlePayload.raw_mdx = sanitizedRaw
+          articlePayload.content = sanitizedRaw
+        }
+
+        const providedProcessedHtml = typeof articlePayload.processed_mdx === 'string' ? articlePayload.processed_mdx : undefined
+        let normalizedProcessedHtml = providedProcessedHtml
+
+        if (!normalizedProcessedHtml && normalizedRawMdx !== undefined) {
+          normalizedProcessedHtml = mdxToHtml(normalizedRawMdx)
+        }
+
+        if (normalizedProcessedHtml !== undefined) {
+          articlePayload.processed_mdx = normalizedProcessedHtml
+        }
+
+        const existingArticle = await articlesRepository.getById(id)
+        const updated = await articlesRepository.update(id, articlePayload)
+
+        const slugProvided = typeof articlePayload?.slug === 'string' && articlePayload.slug.trim() !== ''
+        const nextSlug = slugProvided ? articlePayload.slug! : updated.slug
         const shouldRewriteMdx = hasContentUpdate || hasMetadataUpdate || (slugProvided && nextSlug !== existingArticle.slug)
-        let resolvedContent: string | undefined = hasContentUpdate ? req.body.content : undefined
+        const incomingRawForRewrite = normalizedRawMdx ?? (typeof articlePayload.raw_mdx === 'string' ? articlePayload.raw_mdx : undefined)
+        let resolvedContent: string | undefined = hasContentUpdate ? (incomingRawForRewrite ?? providedContent ?? '') : undefined
 
         try {
           if (shouldRewriteMdx) {
-            const contentlayerMeta = req.body.contentlayer_meta ?? updated.contentlayer_meta ?? existingArticle.contentlayer_meta
+            const contentlayerMeta = articlePayload.contentlayer_meta ?? updated.contentlayer_meta ?? existingArticle.contentlayer_meta
             let nextContent: string | null
 
             if (hasContentUpdate) {
-              nextContent = typeof req.body.content === 'string' ? req.body.content : ''
+              nextContent = incomingRawForRewrite ?? providedContent ?? ''
             } else {
               const fileContent = await readArticleContent(existingArticle.slug)
-              const dbContent = typeof updated.content === 'string' ? updated.content : existingArticle.content
+              const dbContent = typeof updated.raw_mdx === 'string'
+                ? updated.raw_mdx
+                : typeof existingArticle.raw_mdx === 'string'
+                  ? existingArticle.raw_mdx
+                  : typeof updated.content === 'string'
+                    ? updated.content
+                    : existingArticle.content
               nextContent = fileContent ?? (typeof dbContent === 'string' ? dbContent : '')
             }
 
             await writeArticleMdx({
               ...existingArticle,
               ...updated,
-              ...req.body,
+              ...articlePayload,
               slug: nextSlug,
               contentlayer_meta: contentlayerMeta,
               content: nextContent ?? ''
@@ -89,14 +139,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
         if (resolvedContent === undefined) {
           const fileContent = await readArticleContent(nextSlug)
-          const dbContent = typeof updated.content === 'string' ? updated.content : existingArticle.content
+          const dbContent = typeof updated.raw_mdx === 'string'
+            ? updated.raw_mdx
+            : typeof existingArticle.raw_mdx === 'string'
+              ? existingArticle.raw_mdx
+              : typeof updated.content === 'string'
+                ? updated.content
+                : existingArticle.content
           resolvedContent = fileContent ?? (typeof dbContent === 'string' ? dbContent : '')
         }
 
         return res.status(200).json({
           ...updated,
           slug: nextSlug,
-          content: resolvedContent
+          content: resolvedContent,
+          raw_mdx: typeof updated.raw_mdx === 'string' ? updated.raw_mdx : resolvedContent,
+          processed_mdx: typeof updated.processed_mdx === 'string'
+            ? updated.processed_mdx
+            : normalizedProcessedHtml ?? mdxToHtml(resolvedContent ?? ''),
         })
       }
 

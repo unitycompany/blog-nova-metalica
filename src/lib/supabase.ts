@@ -138,7 +138,9 @@ export type Article = {
   title: string
   subtitle?: string
   excerpt?: string
-  content: string
+  content?: string | null
+  raw_mdx?: string | null
+  processed_mdx?: string | null
   author_id?: string
   category_id?: string
   status: 'draft' | 'published' | 'archived'

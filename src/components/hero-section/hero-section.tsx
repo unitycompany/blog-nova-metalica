@@ -7,7 +7,7 @@ import { media } from '../../styles/media'
 import GridSection from '../grid-section'
 import type { ArticlePreview } from '@/types/article-preview'
 import { resolveAssetUrl } from '@/util/assets'
-import { dedupeArticlePreviews, getContentlayerArticlePreviews } from '@/lib/articles/previews'
+import { dedupeArticlePreviews } from '@/lib/articles/previews'
 import { tryGetSupabaseClient } from '@/lib/supabase'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 
@@ -102,10 +102,7 @@ type HeroSectionProps = {
 export default function HeroSection({ initialPosts = [] }: HeroSectionProps) {
     const [categoryActive, setCategoryActive] = useState('Todos')
     const [searchQuery, setSearchQuery] = useState('')
-    const [posts, setPosts] = useState<ArticlePreview[]>(() => {
-        const resolved = initialPosts.length > 0 ? initialPosts : getContentlayerArticlePreviews()
-        return dedupeArticlePreviews(resolved)
-    })
+    const [posts, setPosts] = useState<ArticlePreview[]>(() => dedupeArticlePreviews(initialPosts))
 
     useEffect(() => {
         if (initialPosts.length === 0) {
