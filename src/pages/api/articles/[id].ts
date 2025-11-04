@@ -62,7 +62,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
         const providedContent = typeof articlePayload.content === 'string' ? articlePayload.content : undefined
         const providedRawMdx = typeof articlePayload.raw_mdx === 'string' ? articlePayload.raw_mdx : undefined
-        let normalizedRawMdx = providedRawMdx ?? providedContent
+  const normalizedRawMdx = providedRawMdx ?? providedContent
 
         if (normalizedRawMdx !== undefined) {
           const sanitizedRaw = normalizedRawMdx

@@ -19,6 +19,7 @@ import { htmlToMdx, mdxToHtml } from '@/util/mdxConverter';
 import { getSupabaseAdmin } from '@/lib/supabase';
 import { readArticleContent } from '@/util/content';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Post = { [key: string]: any }
 
 const DEFAULT_SITE_URL = 'https://blog.novametalica.com.br';
@@ -1312,7 +1313,7 @@ export const getStaticProps: GetStaticProps<PostSlugProps, PostPageParams> = asy
     let rawMdx = typeof supabaseArticle.raw_mdx === 'string' ? supabaseArticle.raw_mdx : ''
     const legacyContent = typeof supabaseArticle.content === 'string' ? supabaseArticle.content : ''
     const rawContent = rawMdx || legacyContent
-    let processedHtmlRaw = typeof supabaseArticle.processed_mdx === 'string' ? supabaseArticle.processed_mdx : ''
+  const processedHtmlRaw = typeof supabaseArticle.processed_mdx === 'string' ? supabaseArticle.processed_mdx : ''
     let trimmedProcessed = processedHtmlRaw.trim()
     const trimmedRawContent = (rawContent ?? '').trim()
     const contentLooksHtml = trimmedRawContent ? /<\s*[a-z][^>]*>/i.test(trimmedRawContent) : false
