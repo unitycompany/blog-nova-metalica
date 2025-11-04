@@ -17,6 +17,9 @@ import type { MDXComponents } from 'mdx/types';
 import type { NextRouter } from 'next/router';
 import { media } from "@/styles/media";
 import { resolveAssetUrl } from '@/util/assets';
+import { articlesRepository } from '@/lib/repositories/articles';
+import type { Article } from '@/lib/supabase';
+import { mdxToHtml } from '@/util/mdxConverter';
 // ...existing code...
 
 const DEFAULT_SITE_URL = 'https://blog.novametalica.com.br';
@@ -311,8 +314,11 @@ function MDXImage(props: MDXImageProps) {
 }
 /* eslint-enable @next/next/no-img-element */
 
+type FallbackArticlePayload = (Article & { contentHtml: string })
+
 type PostSlugProps = {
   slug: string
+  fallbackArticle?: FallbackArticlePayload | null
 }
 
 type ImageMeta = {
@@ -542,6 +548,185 @@ function normalizeSlugParam(value: string): string {
   return value.trim().replace(/^\/+/, '').replace(/\/+$/, '')
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+function estimateWordCount(value: string) {
+  if (!value) {
+    return 0
+  }
+
+  return value
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(' ')
+    .filter(Boolean).length
+}
+
+function toStringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined
+  }
+
+  const result = value
+    .map((item) => (typeof item === 'string' ? item.trim() : ''))
+    .filter((item): item is string => item.length > 0)
+
+  return result.length > 0 ? result : undefined
+}
+
+function buildFallbackPost(article: FallbackArticlePayload): Post {
+  const meta: Record<string, unknown> = isRecord(article.contentlayer_meta) ? article.contentlayer_meta : {}
+
+  const metaString = (key: string) => {
+    const value = meta[key]
+    return typeof value === 'string' ? value.trim() : ''
+  }
+
+  const metaNumber = (key: string) => {
+    const value = meta[key]
+    return typeof value === 'number' && Number.isFinite(value) ? value : undefined
+  }
+
+  const metaBoolean = (key: string) => {
+    const value = meta[key]
+    if (typeof value === 'boolean') {
+      return value
+    }
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase()
+      if (['true', '1', 'yes', 'sim'].includes(normalized)) {
+        return true
+      }
+      if (['false', '0', 'no', 'não', 'nao'].includes(normalized)) {
+        return false
+      }
+    }
+    return undefined
+  }
+
+  const slugFromMeta = normalizeSlugParam(metaString('slug'))
+  const normalizedSlug = normalizeSlugParam(slugFromMeta || article.slug || '')
+  const effectiveSlug = normalizedSlug || normalizeSlugParam(article.slug) || article.slug
+  const rawContent = typeof article.content === 'string' ? article.content : ''
+  const htmlContent = article.contentHtml || ''
+  const wordCount = metaNumber('word_count') ?? article.word_count ?? estimateWordCount(rawContent || htmlContent)
+  const readingMinutes = metaNumber('reading_time_minutes') ?? article.reading_time ?? (wordCount ? Math.max(1, Math.round(wordCount / 200)) : 0)
+  const readingTime = {
+    text: readingMinutes ? `${readingMinutes} min read` : '',
+    minutes: readingMinutes ?? 0,
+    time: Math.round((readingMinutes ?? 0) * 60 * 1000),
+    words: wordCount ?? 0
+  }
+
+  const coverCandidate = metaString('cover_asset_id') || metaString('cover_image') || (typeof article.cover_image === 'string' ? article.cover_image : '') || (typeof article.og_image === 'string' ? article.og_image : '') || DEFAULT_SOCIAL_IMAGE
+  const ogImageCandidate = metaString('og_image') || metaString('og_image_asset_id') || (typeof article.og_image === 'string' ? article.og_image : '') || coverCandidate
+  const canonicalFromMeta = metaString('canonical_url')
+  const canonicalFromDb = typeof article.canonical_url === 'string' ? article.canonical_url : ''
+  const permalink = metaString('permalink') || `/blog/post/${effectiveSlug}`
+  const canonicalUrl = ensureAbsoluteUrl(canonicalFromMeta || canonicalFromDb || permalink, permalink)
+  const fallbackMdxCode = 'return { default: function Fallback(){ return null; } };'
+
+  const fallbackPost: Record<string, unknown> = {
+    _id: effectiveSlug || article.id || article.slug,
+    _raw: {
+      sourceFilePath: `${effectiveSlug}.mdx`,
+      sourceFileName: `${effectiveSlug}.mdx`,
+      sourceFileDir: '.',
+      contentType: 'mdx',
+      flattenedPath: effectiveSlug
+    },
+    type: 'Post',
+    title: metaString('title') || article.title || humanizeSlug(effectiveSlug),
+    subtitle: metaString('subtitle') || article.subtitle || '',
+    excerpt: metaString('excerpt') || article.excerpt || '',
+    author: metaString('author') || article.reviewed_by || 'Equipe Nova Metálica',
+    traduzed_by: metaString('traduzed_by') || undefined,
+    site_id: metaString('site_id') || 'blog-nova-metalica',
+    date: metaString('date') || article.published_at || article.updated_at || article.created_at || new Date().toISOString(),
+    lang: metaString('lang') || article.lang || 'pt-BR',
+    cover_asset_id: coverCandidate,
+    seo_title: metaString('seo_title') || article.seo_title || undefined,
+    seo_description: metaString('seo_description') || article.seo_description || article.excerpt || undefined,
+    og_image_asset_id: metaString('og_image_asset_id') || article.og_image || undefined,
+    search_vector: undefined,
+    tag_ids: toStringArray(meta.tag_ids) ?? (Array.isArray(article.tags) ? article.tags : undefined),
+    tags: toStringArray(meta.tags) ?? (Array.isArray(article.tags) ? article.tags : undefined),
+    category: metaString('category') || '',
+    canonical_url: canonicalFromMeta || canonicalFromDb || undefined,
+  robots_index: (metaString('robots_index') || article.robots_index || undefined) as Post['robots_index'] | undefined,
+  robots_follow: (metaString('robots_follow') || article.robots_follow || undefined) as Post['robots_follow'] | undefined,
+  robots_advanced: metaString('robots_advanced') || undefined,
+    sitemap_priority: metaNumber('sitemap_priority'),
+  sitemap_changefreq: metaString('sitemap_changefreq') as Post['sitemap_changefreq'] | undefined,
+    lastmod: metaString('lastmod') || article.updated_at || undefined,
+    breadcrumbs: Array.isArray(meta.breadcrumbs) ? meta.breadcrumbs : undefined,
+    permalink,
+    og_title: metaString('og_title') || article.seo_title || article.title || undefined,
+    og_description: metaString('og_description') || article.seo_description || article.excerpt || undefined,
+  og_type: metaString('og_type') as Post['og_type'] | undefined,
+  twitter_card: metaString('twitter_card') as Post['twitter_card'] | undefined,
+  twitter_site: metaString('twitter_site') || undefined,
+  twitter_creator: metaString('twitter_creator') || undefined,
+    author_slug: metaString('author_slug') || undefined,
+    author_url: metaString('author_url') || undefined,
+    author_avatar_asset_id: metaString('author_avatar_asset_id') || undefined,
+    reviewed_by: metaString('reviewed_by') || article.reviewed_by || undefined,
+    reviewer_credentials: metaString('reviewer_credentials') || article.reviewer_credentials || undefined,
+    fact_checked: metaBoolean('fact_checked') ?? Boolean(article.fact_checked),
+    funding_disclosure: metaString('funding_disclosure') || undefined,
+    conflicts_of_interest: metaString('conflicts_of_interest') || undefined,
+    main_entity_of_page: metaString('main_entity_of_page') || undefined,
+    is_accessible_for_free: metaBoolean('is_accessible_for_free') ?? true,
+    in_language: metaString('in_language') || undefined,
+    article_section: metaString('article_section') || undefined,
+    article_tags: toStringArray(meta.article_tags),
+    image_meta: isRecord(meta.image_meta) ? meta.image_meta : undefined,
+    translated_from_id: metaString('translated_from_id') || undefined,
+    alternate_locales: Array.isArray(meta.alternate_locales) ? meta.alternate_locales : undefined,
+    related_post_slugs: toStringArray(meta.related_post_slugs),
+    series_slug: metaString('series_slug') || undefined,
+    series_order: metaNumber('series_order'),
+    priority_image: metaBoolean('priority_image'),
+    cover_blurhash: metaString('cover_blurhash') || article.cover_blurhash || undefined,
+    cover_dominant_color: metaString('cover_dominant_color') || article.cover_dominant_color || undefined,
+    tldr: metaString('tldr') || article.tldr || undefined,
+    key_takeaways: toStringArray(meta.key_takeaways) ?? (Array.isArray(article.key_takeaways) ? article.key_takeaways : undefined),
+  faq: Array.isArray(meta.faq) ? meta.faq : Array.isArray(article.faq) ? article.faq : undefined,
+  entities: toStringArray(meta.entities),
+  topics: toStringArray(meta.topics),
+  citations: Array.isArray(meta.citations) ? meta.citations : undefined,
+  license: metaString('license') || undefined,
+  content_version: metaString('content_version') || undefined,
+  content_hash: metaString('content_hash') || `supabase-${article.id ?? effectiveSlug}`,
+  embedding_vector_id: metaString('embedding_vector_id') || undefined,
+    chunk_hints: Array.isArray(meta.chunk_hints) ? meta.chunk_hints : undefined,
+  reading_time_minutes: readingMinutes,
+    word_count: wordCount ?? 0,
+    updated_at: metaString('updated_at') || article.updated_at || undefined,
+    cover_image: metaString('cover_image') || article.cover_image || undefined,
+    og_image: ogImageCandidate,
+    slug: effectiveSlug,
+    status: ((metaString('status') || article.status) as Post['status']) ?? 'published',
+    published_at: metaString('published_at') || article.published_at || undefined,
+    body: {
+      raw: htmlContent,
+      code: fallbackMdxCode,
+      compiledSource: '',
+      scope: {},
+      frontmatter: meta,
+    },
+    url: canonicalUrl,
+    readingTime: readingTime as Post['readingTime'],
+    wordCount: wordCount ?? 0,
+    contentHash: `supabase-${article.id ?? effectiveSlug}`,
+  }
+
+  return fallbackPost as Post
+}
+
 function getPostSlugCandidates(post: Post): string[] {
   const candidates = new Set<string>()
 
@@ -568,16 +753,29 @@ function getPostSlugCandidates(post: Post): string[] {
   return Array.from(candidates)
 }
 
-function findPostBySlug(slug: string): Post | undefined {
+function findPostBySlug(slug: string, fallback?: Post): Post | undefined {
   const normalizedTarget = normalizeSlugParam(slug)
   if (!normalizedTarget) {
     return undefined
   }
 
-  return allPosts.find((post) => {
+  const found = allPosts.find((post) => {
     const candidates = getPostSlugCandidates(post)
     return candidates.some((candidate) => normalizeSlugParam(candidate) === normalizedTarget)
   })
+
+  if (found) {
+    return found
+  }
+
+  if (fallback) {
+    const candidates = getPostSlugCandidates(fallback)
+    if (candidates.some((candidate) => normalizeSlugParam(candidate) === normalizedTarget)) {
+      return fallback
+    }
+  }
+
+  return undefined
 }
 
 function getRouteSlugFromPost(post: Post): string {
@@ -596,14 +794,29 @@ function getRouteSlugFromPost(post: Post): string {
   return leaf ?? fallback
 }
 
-export default function PostSlug({ slug }: PostSlugProps) {
+export default function PostSlug({ slug, fallbackArticle }: PostSlugProps) {
     const router = useRouter()
 
   const categoriesList = categories;
 
     const routerSlug = extractSlug(router);
     const activeSlug = normalizeSlugParam(slug || routerSlug);
-    const postFilter = findPostBySlug(activeSlug);
+    const fallbackPost = React.useMemo(() => {
+      if (!fallbackArticle) {
+        return undefined
+      }
+
+      try {
+        return buildFallbackPost(fallbackArticle)
+      } catch (error) {
+        if (process.env.NODE_ENV !== 'production') {
+          console.warn('Falha ao preparar fallback do artigo:', error)
+        }
+        return undefined
+      }
+    }, [fallbackArticle])
+
+    const postFilter = findPostBySlug(activeSlug, fallbackPost);
 
   const categoryBreadcrumb = Array.isArray(postFilter?.breadcrumbs)
     ? postFilter?.breadcrumbs?.[1]
@@ -1115,17 +1328,42 @@ export const getStaticProps: GetStaticProps<PostSlugProps, PostPageParams> = asy
   const normalizedSlug = normalizeSlugParam(slugParam)
   const matchedPost = findPostBySlug(normalizedSlug)
 
-  if (!matchedPost) {
+  if (matchedPost) {
     return {
-      notFound: true,
+      props: {
+        slug: normalizedSlug || getRouteSlugFromPost(matchedPost)
+      },
       revalidate: 60
     }
   }
 
-  return {
-    props: {
-      slug: normalizedSlug || getRouteSlugFromPost(matchedPost)
-    },
-    revalidate: 60
+  try {
+    const supabaseArticle = await articlesRepository.getBySlug(normalizedSlug)
+    if (!supabaseArticle) {
+      throw new Error('Artigo não encontrado no Supabase')
+    }
+
+    const contentRaw = typeof supabaseArticle.content === 'string' ? supabaseArticle.content : ''
+    const contentHtml = mdxToHtml(contentRaw)
+    const fallbackArticle: FallbackArticlePayload = JSON.parse(
+      JSON.stringify({ ...supabaseArticle, content: contentRaw, contentHtml })
+    ) as FallbackArticlePayload
+
+    return {
+      props: {
+        slug: normalizedSlug || supabaseArticle.slug,
+        fallbackArticle
+      },
+      revalidate: 60
+    }
+  } catch (error) {
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn('Falha ao carregar artigo do Supabase para fallback:', error)
+    }
+
+    return {
+      notFound: true,
+      revalidate: 60
+    }
   }
 }
