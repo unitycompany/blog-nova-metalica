@@ -1,9 +1,10 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import formidable, { type File } from 'formidable'
+import type { Buffer } from 'node:buffer'
 import { promises as fs } from 'node:fs'
-import { randomUUID } from 'node:crypto'
-import path from 'node:path'
+import { randomUUID, createHash } from 'node:crypto'
 import { getAdminRequestContext } from '@/lib/auth/adminSession'
+import { uploadBufferToStorage } from '@/lib/storage'
 
 export const config = {
   api: {
@@ -21,10 +22,6 @@ type UploadResponse = {
 const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5MB
 const ACCEPTED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/gif']
 
-async function ensureUploadDir(uploadDir: string) {
-  await fs.mkdir(uploadDir, { recursive: true })
-}
-
 async function parseRequest(req: NextApiRequest) {
   const form = formidable({
     multiples: false,
@@ -37,12 +34,14 @@ async function parseRequest(req: NextApiRequest) {
   return { fields, files }
 }
 
-function buildFileName(original: string | undefined, mimeType: string | undefined) {
-  const baseName = randomUUID()
-  const extFromOriginal = original ? path.extname(original) : ''
-  const safeExt = extFromOriginal || (mimeType ? `.${mimeType.split('/').pop()}` : '')
-
-  return `${baseName}${safeExt}`.replace(/\.+\.+/, '.')
+function buildFileName(original: string | undefined, mimeType: string | undefined, buffer: Buffer) {
+  const hash = createHash('sha1').update(buffer).digest('hex').slice(0, 12)
+  const randomPart = randomUUID().replace(/-/g, '').slice(0, 12)
+  const rawExt = original?.includes('.') ? original.split('.').pop() : undefined
+  const cleanedExt = rawExt?.replace(/[^a-zA-Z0-9]/g, '').toLowerCase()
+  const mimeExt = mimeType?.split('/').pop()?.replace(/[^a-zA-Z0-9]/g, '').toLowerCase()
+  const extension = cleanedExt?.length ? `.${cleanedExt}` : mimeExt?.length ? `.${mimeExt}` : ''
+  return `${randomPart}-${hash}${extension}`
 }
 
 function getSingleFile(file: File | File[] | undefined) {
@@ -64,9 +63,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
       return res.status(401).json({ error: 'Unauthorized' })
     }
 
-    const uploadDir = path.join(process.cwd(), 'public', 'assets', 'uploads')
-    await ensureUploadDir(uploadDir)
-
     const { files } = await parseRequest(req)
     const file = getSingleFile(files.file ?? files.asset ?? Object.values(files)[0])
 
@@ -84,15 +80,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
       return res.status(400).json({ error: 'Formato de arquivo não suportado. Envie uma imagem válida.' })
     }
 
-    const fileName = buildFileName(file.originalFilename ?? undefined, mimeType)
-    const destination = path.join(uploadDir, fileName)
+    const buffer = await fs.readFile(file.filepath)
+    const fileName = buildFileName(file.originalFilename ?? undefined, mimeType, buffer)
 
-    await fs.copyFile(file.filepath, destination)
+    const { publicUrl } = await uploadBufferToStorage({
+      buffer,
+      fileName,
+      contentType: mimeType ?? undefined
+    })
 
-    const fileUrl = `/assets/uploads/${fileName}`
+    await fs.unlink(file.filepath).catch(() => undefined)
 
     return res.status(201).json({
-      url: fileUrl,
+      url: publicUrl,
       name: fileName,
       size: file.size,
       type: mimeType ?? null

@@ -1,11 +1,11 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import formidable, { type File } from 'formidable'
 import { promises as fs } from 'node:fs'
-import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import mammoth from 'mammoth'
 import { getAdminRequestContext } from '@/lib/auth/adminSession'
 import { htmlToMdx } from '@/util/mdxConverter'
+import { uploadBufferToStorage } from '@/lib/storage'
 
 export const config = {
   api: {
@@ -37,10 +37,6 @@ const ACCEPTED_MIME_TYPES = [
 ]
 
 const SUPPORTED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'image/gif', 'image/avif'])
-
-async function ensureUploadDir(uploadDir: string) {
-  await fs.mkdir(uploadDir, { recursive: true })
-}
 
 async function parseRequest(req: NextApiRequest) {
   const form = formidable({
@@ -83,12 +79,10 @@ export default async function handler(
       return res.status(400).json({ error: 'Envie um arquivo .doc ou .docx válido.' })
     }
 
-    const buffer = await fs.readFile(file.filepath)
-    const uploadDir = path.join(process.cwd(), 'public', 'assets', 'uploads')
-    const savedAssets: ImportedAsset[] = []
-    const imageCache = new Map<string, { filename: string; url: string; size: number; contentType: string | null }>()
-
-    await ensureUploadDir(uploadDir)
+  const buffer = await fs.readFile(file.filepath)
+  await fs.unlink(file.filepath).catch(() => undefined)
+  const savedAssets: ImportedAsset[] = []
+  const imageCache = new Map<string, { filename: string; url: string; size: number; contentType: string | null }>()
 
     const result = await mammoth.convertToHtml(
       { buffer },
@@ -119,11 +113,15 @@ export default async function handler(
           const extension = normalizedContentType.split('/').pop() ?? 'png'
           const binary = Buffer.from(base64, 'base64')
           const filename = `gdoc-${randomUUID()}.${extension}`
-          const destination = path.join(uploadDir, filename)
 
-          await fs.writeFile(destination, binary)
+          const { publicUrl } = await uploadBufferToStorage({
+            buffer: binary,
+            fileName: filename,
+            directory: 'docx',
+            contentType: normalizedContentType
+          })
 
-          const url = `/assets/uploads/${filename}`
+          const url = publicUrl
           const assetRecord: ImportedAsset = {
             filename,
             url,
