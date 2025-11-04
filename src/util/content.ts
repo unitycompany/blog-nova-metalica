@@ -46,7 +46,7 @@ export async function writeArticleMdx(payload: ArticleContentPayload) {
 	try {
 		await fs.mkdir(POSTS_DIRECTORY, { recursive: true })
 	} catch (error) {
-		if (!isNodeError(error) || !isReadonlyFsError(error)) {
+		if (!isNodeError(error) || !isUnwritableFsError(error)) {
 			throw error
 		}
 		if (process.env.NODE_ENV !== 'production') {
@@ -61,7 +61,7 @@ export async function writeArticleMdx(payload: ArticleContentPayload) {
 	try {
 		await fs.writeFile(filePath, mdxContent, 'utf8')
 	} catch (error) {
-		if (!isNodeError(error) || !isReadonlyFsError(error)) {
+		if (!isNodeError(error) || !isUnwritableFsError(error)) {
 			throw error
 		}
 		if (process.env.NODE_ENV !== 'production') {
@@ -77,7 +77,7 @@ export async function deleteArticleMdx(slug: string) {
 		await fs.unlink(filePath)
 	} catch (error: unknown) {
 		if (isNodeError(error)) {
-			if (typeof error.code === 'string' && (error.code === 'ENOENT' || isReadonlyFsError(error))) {
+			if (typeof error.code === 'string' && (error.code === 'ENOENT' || isUnwritableFsError(error))) {
 				if (process.env.NODE_ENV !== 'production') {
 					console.warn(`Ignorando falha ao remover arquivo MDX (${error.code}):`, filePath)
 				}
@@ -296,8 +296,8 @@ function isNodeError(error: unknown): error is NodeJS.ErrnoException {
 	return typeof error === 'object' && error !== null && 'code' in error
 }
 
-function isReadonlyFsError(error: NodeJS.ErrnoException) {
-	const readonlyCodes = new Set(['EROFS', 'EACCES', 'EPERM'])
+function isUnwritableFsError(error: NodeJS.ErrnoException) {
+	const readonlyCodes = new Set(['EROFS', 'EACCES', 'EPERM', 'ENOENT'])
 	return typeof error.code === 'string' && readonlyCodes.has(error.code)
 }
 
