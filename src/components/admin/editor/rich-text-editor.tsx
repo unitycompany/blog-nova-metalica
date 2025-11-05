@@ -114,6 +114,7 @@ export function RichTextEditor({ id, value, onChange, disabled = false, placehol
 	const observerRef = useRef<MutationObserver | null>(null)
 	const suppressSyncRef = useRef(false)
 	const lastHtmlRef = useRef('')
+	const desiredHtmlRef = useRef('')
 	const initialValueRef = useRef(value)
 	const onChangeRef = useRef(onChange)
 	const [ready, setReady] = useState(false)
@@ -157,7 +158,33 @@ export function RichTextEditor({ id, value, onChange, disabled = false, placehol
 				)
 
 				editorInstanceRef.current = instance
+				desiredHtmlRef.current = initialHtml
 				setHtmlOnEditor(instance, containerRef.current, initialHtml)
+
+				// Se o nó editável ainda não existir, observe até que apareça e aplique o HTML desejado
+				const applyWhenEditableReady = () => {
+					const container = containerRef.current
+					if (!container) return
+
+					const existingEditable = container.querySelector<HTMLElement>('.rte-editable')
+					if (existingEditable) {
+						setHtmlOnEditor(editorInstanceRef.current, container, desiredHtmlRef.current)
+						return
+					}
+
+					const mo = new MutationObserver(() => {
+						const editable = container.querySelector<HTMLElement>('.rte-editable')
+						if (editable) {
+							setHtmlOnEditor(editorInstanceRef.current, container, desiredHtmlRef.current)
+							mo.disconnect()
+						}
+					})
+					mo.observe(container, { childList: true, subtree: true })
+					// Desarma após alguns segundos para não ficar pendurado
+					setTimeout(() => mo.disconnect(), 4000)
+				}
+
+				applyWhenEditableReady()
 
 				const handleContentChange = () => {
 					if (!editorInstanceRef.current) {
@@ -230,7 +257,25 @@ export function RichTextEditor({ id, value, onChange, disabled = false, placehol
 		}
 
 		lastHtmlRef.current = nextHtml
+		desiredHtmlRef.current = nextHtml
 		setHtmlOnEditor(editorInstanceRef.current, containerRef.current, nextHtml)
+
+		// Se por algum motivo a estrutura interna ainda não estiver pronta, tente novamente quando surgir
+		const container = containerRef.current
+		if (container) {
+			const hasEditable = Boolean(container.querySelector('.rte-editable'))
+			if (!hasEditable) {
+				const mo = new MutationObserver(() => {
+					const editable = container.querySelector<HTMLElement>('.rte-editable')
+					if (editable) {
+						setHtmlOnEditor(editorInstanceRef.current, container, desiredHtmlRef.current)
+						mo.disconnect()
+					}
+				})
+				mo.observe(container, { childList: true, subtree: true })
+				setTimeout(() => mo.disconnect(), 4000)
+			}
+		}
 	}, [ready, value])
 
 	if (error) {
