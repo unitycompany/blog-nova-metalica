@@ -123,6 +123,14 @@ export function RichTextEditor({ id, value, onChange, disabled = false, placehol
 		onChangeRef.current = onChange
 	}, [onChange])
 
+	// If the editor isn't ready yet and the parent value changes (e.g., after fetching from Supabase),
+	// keep the latest value so the initial render uses the correct content when the editor initializes.
+	useEffect(() => {
+		if (!ready) {
+			initialValueRef.current = value
+		}
+	}, [value, ready])
+
 	useEffect(() => {
 		let cancelled = false
 
