@@ -206,9 +206,10 @@ export function RichTextEditor({ id, value, onChange, disabled = false, placehol
 	}, [editorId, placeholder])
 
 	useEffect(() => {
+		// If the editor just emitted a change, clear the suppression flag but still allow
+		// an incoming external value (e.g., loaded from Supabase) to update the editor.
 		if (suppressSyncRef.current) {
 			suppressSyncRef.current = false
-			return
 		}
 
 		if (!ready || !editorInstanceRef.current) {
