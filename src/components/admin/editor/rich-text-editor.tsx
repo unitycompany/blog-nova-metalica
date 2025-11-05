@@ -28,8 +28,8 @@ type RichTextEditorProps = {
 	placeholder?: string
 }
 
-const RTE_SCRIPT_SRC = '/richtexteditor/rte.js'
-const RTE_STYLESHEET_HREF = '/richtexteditor/rte_theme_default.css'
+const RTE_SCRIPT_SRC_BASE = '/richtexteditor/rte.js'
+const RTE_STYLESHEET_HREF_BASE = '/richtexteditor/rte_theme_default.css'
 
 let assetsPromise: Promise<void> | null = null
 
@@ -39,15 +39,21 @@ function ensureRichTextEditorAssets() {
 	}
 
 	assetsPromise = new Promise<void>((resolve, reject) => {
-		const existingScript = document.querySelector<HTMLScriptElement>(`script[src="${RTE_SCRIPT_SRC}"]`)
-		const finish = () => resolve()
+		// Build a cache-busting version param. Can be set via NEXT_PUBLIC_RTE_VERSION; otherwise per-session.
+		const version = (process.env.NEXT_PUBLIC_RTE_VERSION as string | undefined) || String(((window as unknown as { __RTEV__?: string }).__RTEV__ ||= String(Date.now())))
+		const scriptSrc = version ? `${RTE_SCRIPT_SRC_BASE}?v=${encodeURIComponent(version)}` : RTE_SCRIPT_SRC_BASE
+		const cssHref = version ? `${RTE_STYLESHEET_HREF_BASE}?v=${encodeURIComponent(version)}` : RTE_STYLESHEET_HREF_BASE
 
-		if (!document.querySelector<HTMLLinkElement>(`link[href="${RTE_STYLESHEET_HREF}"]`)) {
+		// If a stylesheet not yet present (ignoring query), append one with version param
+		if (!document.querySelector<HTMLLinkElement>(`link[href^="${RTE_STYLESHEET_HREF_BASE}"]`)) {
 			const link = document.createElement('link')
 			link.rel = 'stylesheet'
-			link.href = RTE_STYLESHEET_HREF
+			link.href = cssHref
 			document.head.appendChild(link)
 		}
+
+		const existingScript = document.querySelector<HTMLScriptElement>(`script[src^="${RTE_SCRIPT_SRC_BASE}"]`)
+		const finish = () => resolve()
 
 		if (existingScript) {
 			if ((window as Window).RichTextEditor) {
@@ -60,7 +66,7 @@ function ensureRichTextEditorAssets() {
 		}
 
 		const script = document.createElement('script')
-		script.src = RTE_SCRIPT_SRC
+		script.src = scriptSrc
 		script.async = true
 		script.onload = () => finish()
 		script.onerror = (error) => reject(error)
@@ -222,7 +228,7 @@ export function RichTextEditor({ id, value, onChange, disabled = false, placehol
 		return <p className="admin-editor__error">{error}</p>
 	}
 
-	return (
+	  return (
 		<div className="admin-editor" data-ready={ready ? 'true' : 'false'}>
 			<div id={editorId} ref={containerRef} className="admin-editor__container" data-disabled={disabled} />
 			{!ready ? (

@@ -1,7 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import { getAdminRequestContext } from '@/lib/auth/adminSession'
 import { articlesRepository } from '@/lib/repositories/articles'
-import { deleteArticleMdx, readArticleContent, regenerateContentlayer, writeArticleMdx } from '@/util/content'
+import { deleteArticleMdx, regenerateContentlayer, writeArticleMdx } from '@/util/content'
 import { mdxToHtml } from '@/util/mdxConverter'
 
 type ArticleUpdatePayload = Parameters<typeof articlesRepository.update>[1]
@@ -23,9 +23,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     switch (req.method) {
       case 'GET': {
         const article = await articlesRepository.getById(id)
-        const fileContent = await readArticleContent(article.slug)
-        const rawSource = fileContent
-          ?? (typeof article.raw_mdx === 'string' ? article.raw_mdx : undefined)
+        const rawSource = (typeof article.raw_mdx === 'string' ? article.raw_mdx : undefined)
           ?? (typeof article.content === 'string' ? article.content : '')
         const processedSource = typeof article.processed_mdx === 'string' && article.processed_mdx.trim().length > 0
           ? article.processed_mdx
@@ -81,8 +79,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           articlePayload.processed_mdx = normalizedProcessedHtml
         }
 
-        const existingArticle = await articlesRepository.getById(id)
-        const updated = await articlesRepository.update(id, articlePayload)
+  const existingArticle = await articlesRepository.getById(id)
+  const updated = await articlesRepository.update(id, articlePayload)
 
         const slugProvided = typeof articlePayload?.slug === 'string' && articlePayload.slug.trim() !== ''
         const nextSlug = slugProvided ? articlePayload.slug! : updated.slug
@@ -90,55 +88,50 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         const incomingRawForRewrite = normalizedRawMdx ?? (typeof articlePayload.raw_mdx === 'string' ? articlePayload.raw_mdx : undefined)
         let resolvedContent: string | undefined = hasContentUpdate ? (incomingRawForRewrite ?? providedContent ?? '') : undefined
 
-        try {
-          if (shouldRewriteMdx) {
-            const contentlayerMeta = articlePayload.contentlayer_meta ?? updated.contentlayer_meta ?? existingArticle.contentlayer_meta
-            let nextContent: string | null
+        const enableFsSync = process.env.ENABLE_CONTENT_FS_SYNC === '1'
+        if (enableFsSync) {
+          try {
+            if (shouldRewriteMdx) {
+              const contentlayerMeta = articlePayload.contentlayer_meta ?? updated.contentlayer_meta ?? existingArticle.contentlayer_meta
+              let nextContent: string
 
-            if (hasContentUpdate) {
-              nextContent = incomingRawForRewrite ?? providedContent ?? ''
-            } else {
-              const fileContent = await readArticleContent(existingArticle.slug)
-              const dbContent = typeof updated.raw_mdx === 'string'
-                ? updated.raw_mdx
-                : typeof existingArticle.raw_mdx === 'string'
-                  ? existingArticle.raw_mdx
-                  : typeof updated.content === 'string'
-                    ? updated.content
-                    : existingArticle.content
-              nextContent = fileContent ?? (typeof dbContent === 'string' ? dbContent : '')
+              if (hasContentUpdate) {
+                nextContent = incomingRawForRewrite ?? providedContent ?? ''
+              } else {
+                const dbContent = typeof updated.raw_mdx === 'string'
+                  ? updated.raw_mdx
+                  : typeof existingArticle.raw_mdx === 'string'
+                    ? existingArticle.raw_mdx
+                    : typeof updated.content === 'string'
+                      ? updated.content
+                      : existingArticle.content
+                nextContent = typeof dbContent === 'string' ? dbContent : ''
+              }
+
+              await writeArticleMdx({
+                ...existingArticle,
+                ...updated,
+                ...articlePayload,
+                slug: nextSlug,
+                contentlayer_meta: contentlayerMeta,
+                content: nextContent ?? ''
+              })
+
+              if (existingArticle.slug !== nextSlug) {
+                await deleteArticleMdx(existingArticle.slug)
+              }
+
+              resolvedContent = nextContent ?? ''
+
+              await regenerateContentlayer()
             }
-
-            await writeArticleMdx({
-              ...existingArticle,
-              ...updated,
-              ...articlePayload,
-              slug: nextSlug,
-              contentlayer_meta: contentlayerMeta,
-              content: nextContent ?? ''
-            })
-
-            if (existingArticle.slug !== nextSlug) {
-              await deleteArticleMdx(existingArticle.slug)
-            }
-
-            resolvedContent = nextContent ?? ''
-
-            await regenerateContentlayer()
-            await revalidatePaths(res, [
-              '/',
-              '/blog',
-              extractPermalink(existingArticle.contentlayer_meta, existingArticle.slug),
-              extractPermalink(contentlayerMeta, nextSlug)
-            ])
+          } catch (writeError) {
+            console.error('Falha ao atualizar MDX do artigo:', writeError)
+            throw writeError
           }
-        } catch (writeError) {
-          console.error('Falha ao atualizar MDX do artigo:', writeError)
-          throw writeError
         }
 
         if (resolvedContent === undefined) {
-          const fileContent = await readArticleContent(nextSlug)
           const dbContent = typeof updated.raw_mdx === 'string'
             ? updated.raw_mdx
             : typeof existingArticle.raw_mdx === 'string'
@@ -146,7 +139,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               : typeof updated.content === 'string'
                 ? updated.content
                 : existingArticle.content
-          resolvedContent = fileContent ?? (typeof dbContent === 'string' ? dbContent : '')
+          resolvedContent = typeof dbContent === 'string' ? dbContent : ''
         }
 
         return res.status(200).json({
@@ -163,8 +156,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       case 'DELETE': {
         const articleToRemove = await articlesRepository.getById(id)
         await articlesRepository.delete(id)
-        await deleteArticleMdx(articleToRemove.slug)
-        await regenerateContentlayer()
+        if (process.env.ENABLE_CONTENT_FS_SYNC === '1') {
+          await deleteArticleMdx(articleToRemove.slug)
+          await regenerateContentlayer()
+        }
         await revalidatePaths(res, ['/', '/blog', extractPermalink(articleToRemove.contentlayer_meta, articleToRemove.slug)])
         return res.status(204).end()
       }

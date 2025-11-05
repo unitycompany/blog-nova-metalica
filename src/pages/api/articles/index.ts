@@ -2,7 +2,7 @@ import type { NextApiRequest, NextApiResponse } from 'next'
 import { getAdminRequestContext } from '@/lib/auth/adminSession'
 import { articlesRepository } from '@/lib/repositories/articles'
 import type { Article } from '@/lib/supabase'
-import { listArticleFiles, regenerateContentlayer, writeArticleMdx } from '@/util/content'
+import { regenerateContentlayer, writeArticleMdx } from '@/util/content'
 import { mdxToHtml } from '@/util/mdxConverter'
 
 type ArticleInsertPayload = Parameters<typeof articlesRepository.create>[0]
@@ -20,7 +20,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         const statusParam = typeof req.query.status === 'string' ? req.query.status : undefined
         const allowedStatuses: Array<Article['status']> = ['draft', 'published', 'archived']
         const status = allowedStatuses.includes(statusParam as Article['status']) ? (statusParam as Article['status']) : undefined
-        await syncFilesystemArticles()
         const articles = await articlesRepository.getAll(status)
         return res.status(200).json(articles)
 
@@ -51,31 +50,36 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
         const newArticle = await articlesRepository.create(articlePayload)
 
-        try {
-          await writeArticleMdx({
-            ...newArticle,
-            ...articlePayload,
-            slug: newArticle.slug,
-            contentlayer_meta: articlePayload.contentlayer_meta ?? newArticle.contentlayer_meta,
-            content: rawMdxValue
-          })
-
-          await regenerateContentlayer()
-
-          await revalidatePaths(res, [
-            '/',
-            '/blog',
-            extractPermalink(newArticle.contentlayer_meta, newArticle.slug)
-          ])
-        } catch (writeError) {
-          console.error('Falha ao gerar MDX do artigo recém-criado:', writeError)
+        // Optionally write MDX files and rebuild Contentlayer only when explicitly enabled
+        const enableFsSync = process.env.ENABLE_CONTENT_FS_SYNC === '1'
+        if (enableFsSync) {
           try {
-            await articlesRepository.delete(newArticle.id)
-          } catch (cleanupError) {
-            console.error('Falha ao reverter artigo criado após erro de MDX:', cleanupError)
+            await writeArticleMdx({
+              ...newArticle,
+              ...articlePayload,
+              slug: newArticle.slug,
+              contentlayer_meta: articlePayload.contentlayer_meta ?? newArticle.contentlayer_meta,
+              content: rawMdxValue
+            })
+
+            await regenerateContentlayer()
+          } catch (writeError) {
+            console.error('Falha ao gerar MDX do artigo recém-criado:', writeError)
+            try {
+              await articlesRepository.delete(newArticle.id)
+            } catch (cleanupError) {
+              console.error('Falha ao reverter artigo criado após erro de MDX:', cleanupError)
+            }
+            throw writeError
           }
-          throw writeError
         }
+
+        // Always revalidate ISR pages for Supabase-driven rendering
+        await revalidatePaths(res, [
+          '/',
+          '/blog',
+          extractPermalink(newArticle.contentlayer_meta, newArticle.slug)
+        ])
 
         return res.status(201).json({
           ...newArticle,
@@ -142,209 +146,10 @@ async function revalidatePaths(res: NextApiResponse, paths: string[]) {
   )
 }
 
-async function syncFilesystemArticles() {
-  const files = await listArticleFiles()
-  if (files.length === 0) {
-    return
-  }
+// Removed automatic filesystem -> Supabase sync to avoid unintended article creation
+// If needed in the future, expose a protected, explicit endpoint or script to run a one-off import.
 
-  const existingArticles = await articlesRepository.getAll()
-  const knownSlugs = new Set(existingArticles.map((article) => article.slug))
-  let syncedAny = false
-
-  for (const file of files) {
-    if (knownSlugs.has(file.slug)) {
-      continue
-    }
-
-    const payload = buildArticlePayloadFromFile(file)
-
-    try {
-      await articlesRepository.create(payload)
-      syncedAny = true
-      knownSlugs.add(file.slug)
-    } catch (error) {
-      console.error(`Falha ao sincronizar artigo do arquivo ${file.filePath}:`, error)
-    }
-  }
-
-  if (syncedAny) {
-    await regenerateContentlayer()
-  }
-}
-
-function buildArticlePayloadFromFile(file: Awaited<ReturnType<typeof listArticleFiles>>[number]) {
-  const frontmatter = normalizeFrontmatter(file.frontmatter, file.slug)
-
-  const status = parseStatus(frontmatter.status)
-  const subtitle = toOptionalString(frontmatter.subtitle)
-  const excerpt = toOptionalString(frontmatter.excerpt ?? frontmatter.description)
-  const seoTitle = toOptionalString(frontmatter.seo_title)
-  const seoDescription = toOptionalString(frontmatter.seo_description)
-  const canonicalUrl = toOptionalString(frontmatter.canonical_url)
-  const robotsIndex = toOptionalString(frontmatter.robots_index) ?? 'index'
-  const robotsFollow = toOptionalString(frontmatter.robots_follow) ?? 'follow'
-  const coverImage = toOptionalString(frontmatter.cover_image ?? frontmatter.cover_asset_id ?? frontmatter.og_image_asset_id)
-  const ogImage = toOptionalString(frontmatter.og_image ?? frontmatter.og_image_asset_id ?? coverImage)
-  const lang = toOptionalString(frontmatter.lang ?? frontmatter.in_language) ?? 'pt-BR'
-  const coverBlurhash = toOptionalString(frontmatter.cover_blurhash)
-  const coverDominantColor = toOptionalString(frontmatter.cover_dominant_color)
-  const reviewedBy = toOptionalString(frontmatter.reviewed_by)
-  const reviewerCredentials = toOptionalString(frontmatter.reviewer_credentials)
-  const factChecked = toBoolean(frontmatter.fact_checked)
-  const tldr = toOptionalString(frontmatter.tldr)
-  const readingTime = toOptionalNumber(frontmatter.reading_time_minutes ?? frontmatter.reading_time)
-  const wordCount = toOptionalNumber(frontmatter.word_count)
-  const tags = toStringArray(frontmatter.tags ?? frontmatter.article_tags)
-  const keyTakeaways = toStringArray(frontmatter.key_takeaways)
-
-  const metadata = pruneUndefined({
-    ...frontmatter,
-    slug: file.slug
-  })
-
-  const permalinkValue = metadata.permalink
-  if (typeof permalinkValue !== 'string' || permalinkValue.trim() === '') {
-    metadata.permalink = `/blog/post/${file.slug}`
-  }
-
-  return {
-    slug: file.slug,
-  title: toOptionalString(frontmatter.title) ?? deriveTitleFromSlug(file.slug),
-    subtitle,
-    excerpt,
-    content: file.content,
-  raw_mdx: file.content,
-  processed_mdx: mdxToHtml(file.content ?? ''),
-    status,
-  author_id: undefined,
-  category_id: undefined,
-    cover_image: coverImage,
-    seo_title: seoTitle,
-    seo_description: seoDescription,
-    canonical_url: canonicalUrl,
-    og_image: ogImage,
-    robots_index: robotsIndex,
-    robots_follow: robotsFollow,
-    tags,
-    lang,
-    cover_blurhash: coverBlurhash,
-    cover_dominant_color: coverDominantColor,
-    reviewed_by: reviewedBy,
-    reviewer_credentials: reviewerCredentials,
-    fact_checked: factChecked,
-    tldr,
-    key_takeaways: keyTakeaways,
-    reading_time: readingTime,
-    word_count: wordCount,
-    contentlayer_meta: metadata
-  } satisfies Omit<Article, 'id' | 'created_at' | 'updated_at'>
-}
-
-function normalizeFrontmatter(frontmatter: Record<string, unknown>, slug: string) {
-  const normalized = { ...frontmatter }
-
-  if (!normalized.slug || typeof normalized.slug !== 'string' || normalized.slug.trim() === '') {
-    normalized.slug = slug
-  }
-
-  return normalized
-}
-
-function deriveTitleFromSlug(slug: string) {
-  return slug
-    .split(/[-_]+/)
-    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
-    .join(' ')
-}
-
-function parseStatus(value: unknown): Article['status'] {
-  if (typeof value === 'string') {
-    const normalized = value.trim().toLowerCase()
-    if (normalized === 'published' || normalized === 'draft' || normalized === 'archived') {
-      return normalized
-    }
-  }
-
-  return 'draft'
-}
-
-function toOptionalString(value: unknown): string | undefined {
-  if (typeof value !== 'string') {
-    return undefined
-  }
-
-  const trimmed = value.trim()
-  return trimmed.length > 0 ? trimmed : undefined
-}
-
-function toOptionalNumber(value: unknown): number | undefined {
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return value
-  }
-
-  if (typeof value === 'string') {
-    const parsed = Number(value)
-    return Number.isFinite(parsed) ? parsed : undefined
-  }
-
-  return undefined
-}
-
-function toBoolean(value: unknown): boolean {
-  if (typeof value === 'boolean') {
-    return value
-  }
-
-  if (typeof value === 'number') {
-    return value !== 0
-  }
-
-  if (typeof value === 'string') {
-    const normalized = value.trim().toLowerCase()
-    if (['true', '1', 'yes', 'sim'].includes(normalized)) {
-      return true
-    }
-    if (['false', '0', 'no', 'não', 'nao'].includes(normalized)) {
-      return false
-    }
-  }
-
-  return false
-}
-
-function toStringArray(value: unknown): string[] | undefined {
-  if (Array.isArray(value)) {
-    const normalized = value
-      .map((item) => (typeof item === 'string' ? item.trim() : ''))
-      .filter((item): item is string => item.length > 0)
-
-    return normalized.length > 0 ? normalized : undefined
-  }
-
-  if (typeof value === 'string' && value.trim() !== '') {
-    return value
-      .split(',')
-      .map((item) => item.trim())
-      .filter((item) => item.length > 0)
-  }
-
-  return undefined
-}
-
-function pruneUndefined(record: Record<string, unknown>) {
-  const normalized: Record<string, unknown> = {}
-
-  for (const [key, value] of Object.entries(record)) {
-    if (value === undefined) {
-      continue
-    }
-
-    normalized[key] = value
-  }
-
-  return normalized
-}
+// Removed helper functions used exclusively by the old filesystem sync logic.
 
 function isSlugConflictError(error: unknown) {
   if (!error || typeof error !== 'object') {
